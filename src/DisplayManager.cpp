@@ -8,6 +8,7 @@ DisplayManager displayMgr;
 DisplayManager::DisplayManager() {}
 
 bool DisplayManager::init() {
+  // ディスプレイ基本設定
   M5.Lcd.setBrightness(100);
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextSize(2);
@@ -15,13 +16,16 @@ bool DisplayManager::init() {
 }
 
 void DisplayManager::update() {
+  // 画面クリア ＆ カーソル位置のリセット
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setCursor(10, 20);
 
+  // 表示データのフォールバック処理（未設定時のデフォルト値）
   String devId = bleMgr.deviceId.isEmpty() ? "M5-INIT" : bleMgr.deviceId;
   String spot = bleMgr.spotName.isEmpty() ? "Unregistered" : bleMgr.spotName;
   String sticker = bleMgr.distributeStickerId.isEmpty() ? "none" : bleMgr.distributeStickerId;
 
+  // 状態ごとの画面描画切り替え
   switch (StateManager::currentState) {
     case STATE_BLE_CONNECTED:
       M5.Lcd.setTextColor(CYAN, BLACK);
@@ -33,7 +37,7 @@ void DisplayManager::update() {
       M5.Lcd.setTextColor(WHITE, BLACK);
       M5.Lcd.println("=== Station Mode ===");
       M5.Lcd.printf("Spot: %s\n", spot.c_str());
-      M5.Lcd.printf("ID  : %s\n\n", devId.c_str());
+      M5.Lcd.printf("ID   : %s\n\n", devId.c_str());
       M5.Lcd.setTextColor(YELLOW, BLACK);
       M5.Lcd.println("[Distribute Sticker]");
       M5.Lcd.println(sticker);

@@ -12,16 +12,18 @@
 #define LORA_TX_PIN 17
 
 void setup() {
+  // M5Stack本体 & 電源管理の初期化
   M5.begin(true, false, true);
   M5.Power.begin();
   Serial.begin(115200);
   delay(100);
-
+  
+  // 周辺機器（画面・LED/ブザー）初期化
   displayMgr.init();
   ledBuzzerMgr.init();
   delay(50);
 
-  // Wi-Fiドライバを起動し、チャンネルを 1 に固定
+  // Wi-Fiドライバを起動し、ESP-NOW通信安定化のためWi-Fiチャンネルを 1 に固定
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -30,11 +32,14 @@ void setup() {
   esp_wifi_set_promiscuous(false);
   delay(100);
 
+  // 無線機能（ESP-NOW / BLE）初期化
   EspNowManager::init();
   bleMgr.init();
 
+  // LoRa用シリアル通信（UART2）の開始
   Serial2.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
 
+  // 起動時の初期状態（待機モード）へ移行
   StateManager::changeState(STATE_IDLE);
 }
 
