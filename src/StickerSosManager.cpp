@@ -87,3 +87,18 @@ void StickerSosManager::flushLogsToBle() {
   pendingDistributeLogs.clear();
   pendingSosLogs.clear();
 }
+
+// 当日の配布済みリストと未送信ログのリセット（左ボタン）
+void StickerSosManager::resetDailyData() {
+  // 1. 本日の重複配布防止リストをクリア
+  distributedTodayList.clear();
+
+  // 2. 内部に保持している未送信ログ（通過・SOS）をクリア
+  pendingDistributeLogs.clear();
+  pendingSosLogs.clear();
+
+  // 3. ステートを待機状態に戻す
+  StateManager::changeState(STATE_IDLE);
+
+  Serial.println("[Reset] Daily distributed list and pending logs cleared!");
+}

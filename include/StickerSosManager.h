@@ -21,6 +21,9 @@ public:
 
   // 蓄積ログをBLE経由でアプリへフラッシュ
   void flushLogsToBle();
+
+  // 当日の配布記録とログをクリアするリセット処理
+  void resetDailyData();
 };
 
 // 外部参照

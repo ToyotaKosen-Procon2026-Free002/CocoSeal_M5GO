@@ -65,6 +65,23 @@ void loop() {
   }
   */
 
+  // 左ボタン（BtnA）が押されたらリセット実行
+  if (M5.BtnA.wasPressed()) {
+    stickerSosMgr.resetDailyData();
+
+    // 画面に一時的にリセット完了を表示
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setCursor(20, 100);
+    M5.Lcd.setTextColor(GREEN);
+    M5.Lcd.setTextSize(3); // 一時的に大きくする
+    M5.Lcd.println("RESET DONE!");
+    delay(1000);
+
+    // 文字サイズを標準（サイズ2）に戻してから待機画面に戻る
+    M5.Lcd.setTextSize(2); 
+    StateManager::changeState(STATE_IDLE);
+  }
+  
   // 中央ボタン(BtnB): 設定確認画面の切り替え
   if (M5.BtnB.wasPressed()) {
     if (StateManager::currentState == STATE_SHOW_SETTING) {
