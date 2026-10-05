@@ -4,7 +4,7 @@
 // ピンの設定
 #define LED_BAR_PIN 15
 #define NUM_LED 10
-#define RSSI_THRESHOLD -90
+#define RSSI_THRESHOLD -50 // 値を大きく（0に近づける）すると距離が狭まる
 
 //UUID設定
 #define SERVICE_UUID           "42fbd1f2-b02c-1ba6-87f8-7d9ca4f3a343"
