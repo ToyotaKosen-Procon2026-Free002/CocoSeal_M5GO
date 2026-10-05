@@ -5,6 +5,34 @@
 
 DisplayManager displayMgr;
 
+// 右上にバッテリー残量を表示する
+void drawBatteryStatus() {
+  int bat = M5.Power.getBatteryLevel();
+  bool charging = M5.Power.isCharging();
+
+  if (bat < 0) bat = 0;
+  if (bat > 100) bat = 100;
+
+  // 1行目の右端にバッテリーを表示
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setCursor(210, 10);
+
+  if (charging) {
+    M5.Lcd.setTextColor(GREEN, BLACK);
+    M5.Lcd.printf("%3d%%[C]", bat);
+  } else if (bat <= 20) {
+    M5.Lcd.setTextColor(RED, BLACK);
+    M5.Lcd.printf("%3d%%", bat);
+  } else {
+    M5.Lcd.setTextColor(WHITE, BLACK);
+    M5.Lcd.printf("%3d%%", bat);
+  }
+
+  // メインテキストの開始位置（2行目)
+  M5.Lcd.setCursor(10, 45);
+  M5.Lcd.setTextSize(2);
+}
+
 DisplayManager::DisplayManager() {}
 
 bool DisplayManager::init() {
@@ -16,16 +44,18 @@ bool DisplayManager::init() {
 }
 
 void DisplayManager::update() {
-  // 画面クリア ＆ カーソル位置のリセット
+  // 画面クリア
   M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(10, 20);
+
+  // 1行目にバッテリーを描画
+  drawBatteryStatus();
 
   // 表示データのフォールバック処理（未設定時のデフォルト値）
   String devId = bleMgr.deviceId.isEmpty() ? "M5-INIT" : bleMgr.deviceId;
   String spot = bleMgr.spotName.isEmpty() ? "Unregistered" : bleMgr.spotName;
   String sticker = bleMgr.distributeStickerId.isEmpty() ? "none" : bleMgr.distributeStickerId;
 
-  // 状態ごとの画面描画切り替え
+  // 状態ごとの画面描画切り替え（2行目からスタート）
   switch (StateManager::currentState) {
     case STATE_BLE_CONNECTED:
       M5.Lcd.setTextColor(CYAN, BLACK);

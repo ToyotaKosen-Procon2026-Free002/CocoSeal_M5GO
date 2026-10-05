@@ -46,25 +46,6 @@ void setup() {
 void loop() {
   M5.update();
 
-  // ===================
-  // 【テスト用コード】
-  // ===================
-  /*
-  // ボタンA（左）: ダミー子機の通過検知
-  if (M5.BtnA.wasPressed()) {
-    CommunicationPacket dummyPkt;
-    memset(&dummyPkt, 0, sizeof(dummyPkt));
-    dummyPkt.type = 0;
-    strncpy(dummyPkt.device_id, "TEST-CHILD", sizeof(dummyPkt.device_id) - 1);
-    stickerSosMgr.handlePacket(dummyPkt, -45);
-  }
-
-  // ボタンC（右）: ダミーSOS発信
-  if (M5.BtnC.wasPressed()) {
-    stickerSosMgr.handleSos("TEST-SOS", "BUTTON_C");
-  }
-  */
-
   // 左ボタン（BtnA）が押されたらリセット実行
   if (M5.BtnA.wasPressed()) {
     stickerSosMgr.resetDailyData();
@@ -73,11 +54,11 @@ void loop() {
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(20, 100);
     M5.Lcd.setTextColor(GREEN);
-    M5.Lcd.setTextSize(3); // 一時的に大きくする
+    M5.Lcd.setTextSize(3);
     M5.Lcd.println("RESET DONE!");
     delay(1000);
 
-    // 文字サイズを標準（サイズ2）に戻してから待機画面に戻る
+    // 文字サイズを標準（サイズ2）に戻してから待機画面に遷移
     M5.Lcd.setTextSize(2); 
     StateManager::changeState(STATE_IDLE);
   }
