@@ -27,13 +27,22 @@ void setup() {
   ledBuzzerMgr.init();
   delay(50);
 
-  // Wi-Fiドライバを起動し、ESP-NOW通信安定化のためWi-Fiチャンネルを 1 に固定
-  WiFi.persistent(false);
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
+// Wi-Fiルーターへ接続するとき
+// WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
+// while (WiFi.status() != WL_CONNECTED) { delay(500); }
+
+  // 接続中のWi-Fiのチャンネルを取得
+  uint8_t primaryChannel = WiFi.channel();
+  if (primaryChannel == 0) {
+    primaryChannel = 1; // Wi-Fi未接続時のフォールバック値
+  }
+
+  // Wi-Fiの現在チャンネルにESP-NOWの物理チャンネルを合わせる
   esp_wifi_set_promiscuous(true);
-  esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_channel(primaryChannel, WIFI_SECOND_CHAN_NONE);
   esp_wifi_set_promiscuous(false);
+  
+  Serial.printf("[Wi-Fi / ESP-NOW] Operating Channel: %d\n", primaryChannel);
   delay(100);
 
   // 無線機能（ESP-NOW / BLE）初期化
@@ -43,7 +52,7 @@ void setup() {
   // LoRa用シリアル通信（UART2）の開始
   Serial2.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
 
-  // 起動時の初期状態（待機モード）へ移行
+  // 起動時の初期状態へ移行
   StateManager::changeState(STATE_IDLE);
 }
 

@@ -1,5 +1,6 @@
 #include "EspNowManager.h"
 #include "StickerSosManager.h"
+#include <WiFi.h>
 
 // ESP-NOWのC言語用コールバック関数からC++クラス静的メソッドへ接続するためのラッパー
 static void onDataRecvWrapper(const uint8_t* mac, const uint8_t* incomingData, int len) {
@@ -26,7 +27,10 @@ void EspNowManager::sendSticker(const String& stationId, const String& stickerId
   uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 1;
+  
+  // WIFIの現在チャンネルを取得してピア情報に設定
+  uint8_t currentCh = WiFi.channel();
+  peerInfo.channel = (currentCh > 0) ? currentCh : 0; // 0 を指定すると現在の自機チャンネルを使用
   peerInfo.encrypt = false;
 
   if (!esp_now_is_peer_exist(broadcastAddress)) {
