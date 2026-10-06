@@ -28,6 +28,7 @@ void drawBatteryStatus() {
     M5.Lcd.printf("%3d%%", bat);
   }
 
+  // メインテキストの開始位置（2行目)
   M5.Lcd.setCursor(10, 45);
   M5.Lcd.setTextSize(2);
 }
@@ -43,9 +44,11 @@ bool DisplayManager::init() {
 }
 
 void DisplayManager::update() {
-  // 画面クリア ＆ カーソル位置のリセット
+  // 画面クリア
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setCursor(10, 20);
+
+  // 1行目にバッテリーを描画
   drawBatteryStatus();
 
   // 表示データのフォールバック処理（未設定時のデフォルト値）
@@ -53,7 +56,7 @@ void DisplayManager::update() {
   String spot = bleMgr.spotName.isEmpty() ? "Unregistered" : bleMgr.spotName;
   String sticker = bleMgr.distributeStickerId.isEmpty() ? "none" : bleMgr.distributeStickerId;
 
-  // 状態ごとの画面描画切り替え
+  // 状態ごとの画面描画切り替え（2行目からスタート）
   switch (StateManager::currentState) {
     case STATE_BLE_CONNECTED:
       M5.Lcd.setTextColor(CYAN, BLACK);

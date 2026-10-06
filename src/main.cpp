@@ -83,11 +83,11 @@ void loop() {
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(20, 100);
     M5.Lcd.setTextColor(GREEN);
-    M5.Lcd.setTextSize(3); // 一時的に大きくする
+    M5.Lcd.setTextSize(3);
     M5.Lcd.println("RESET DONE!");
     delay(1000);
 
-    // 文字サイズを標準（サイズ2）に戻してから待機画面に戻る
+    // 文字サイズを標準（サイズ2）に戻してから待機画面に遷移
     M5.Lcd.setTextSize(2); 
     StateManager::changeState(STATE_IDLE);
   }
