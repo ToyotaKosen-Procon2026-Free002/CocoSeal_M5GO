@@ -36,24 +36,6 @@ void setup() {
     delay(100);
   }
 
-  uint8_t primaryChannel = 1; // デフォルトは 1
-
-  if (WiFi.status() == WL_CONNECTED) {
-    primaryChannel = WiFi.channel(); // 接続成功時のみ実際のチャンネルを取得
-    Serial.printf("[Wi-Fi] Connected! Channel: %d\n", primaryChannel);
-  } else {
-    Serial.println("[Wi-Fi] Not connected. Using default channel 1.");
-    WiFi.disconnect(); // 未接続時は一度切断状態にして挙動を安定化
-  }
-
-  // Wi-Fiの現在チャンネルにESP-NOWの物理チャンネルを合わせる
-  esp_wifi_set_promiscuous(true);
-  esp_wifi_set_channel(primaryChannel, WIFI_SECOND_CHAN_NONE);
-  esp_wifi_set_promiscuous(false);
-  
-  Serial.printf("[Wi-Fi / ESP-NOW] Operating Channel: %d\n", primaryChannel);
-  delay(100);
-
   // 無線機能（ESP-NOW / BLE）初期化
   EspNowManager::init();
   bleMgr.init();
