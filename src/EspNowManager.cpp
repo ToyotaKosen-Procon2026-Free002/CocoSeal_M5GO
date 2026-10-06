@@ -15,29 +15,26 @@ void EspNowManager::init() {
 }
 
 void EspNowManager::sendSticker(const String& stationId, const String& stickerId) {
-  // 送信用パケット構造体の作成と初期化
   CommunicationPacket reply;
   memset(&reply, 0, sizeof(reply));
   strncpy(reply.device_id, stationId.c_str(), sizeof(reply.device_id) - 1);
   reply.type = 0;
   strncpy(reply.stickerId, stickerId.c_str(), sizeof(reply.stickerId) - 1);
-  reply.isGateway = true; // 親機フラグ
+  reply.isGateway = true;
 
-  // ブロードキャスト用ピアの設定
   uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   
-  // WIFIの現在チャンネルを取得してピア情報に設定
+  // 接続されている場合はそのチャンネル、未接続(0)なら 1 に固定して安全化
   uint8_t currentCh = WiFi.channel();
-  peerInfo.channel = (currentCh > 0) ? currentCh : 0; // 0 を指定すると現在の自機チャンネルを使用
+  peerInfo.channel = (currentCh > 0) ? currentCh : 1;
   peerInfo.encrypt = false;
 
   if (!esp_now_is_peer_exist(broadcastAddress)) {
-    esp_now_add_peer(&peerInfo); //ESP-NOWの管理リストへ登録
+    esp_now_add_peer(&peerInfo);
   }
 
-  // ブロードキャスト送信
   esp_now_send(broadcastAddress, (uint8_t*)&reply, sizeof(reply));
 }
 

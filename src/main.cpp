@@ -31,10 +31,26 @@ void setup() {
 // WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
 // while (WiFi.status() != WL_CONNECTED) { delay(500); }
 
-  // 接続中のWi-Fiのチャンネルを取得
-  uint8_t primaryChannel = WiFi.channel();
-  if (primaryChannel == 0) {
-    primaryChannel = 1; // Wi-Fi未接続時のフォールバック値
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  
+  // Wi-Fi接続処理（接続したいSSIDとPASSを設定）
+  //WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
+
+  // クラッシュ防止
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 5000) {
+    delay(100);
+  }
+
+  uint8_t primaryChannel = 1; // デフォルトは 1
+
+  if (WiFi.status() == WL_CONNECTED) {
+    primaryChannel = WiFi.channel(); // 接続成功時のみ実際のチャンネルを取得
+    Serial.printf("[Wi-Fi] Connected! Channel: %d\n", primaryChannel);
+  } else {
+    Serial.println("[Wi-Fi] Not connected. Using default channel 1.");
+    WiFi.disconnect(); // 未接続時は一度切断状態にして挙動を安定化
   }
 
   // Wi-Fiの現在チャンネルにESP-NOWの物理チャンネルを合わせる
