@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <esp_random.h>
 #include <Preferences.h>
 #include "BleManager.h"
@@ -59,20 +60,6 @@ void BleManager::init() {
   Serial.println("==============================================\n");
   Serial.flush();
 
-  // 初回生成時の場合、Wi-Fi接続があればサーバー(DB)に初回登録 (POST /devices/gateway)
-  if (isNewDevice) {
-    if (WiFi.status() == WL_CONNECTED) {
-      bool registered = serverApiMgr.registerGateway(deviceId, spotName);
-      if (registered) {
-        Serial.println("[API] Successfully registered new Gateway UUID to DB!");
-      } else {
-        Serial.println("[API] Failed to register Gateway to DB. Will retry on next boot or sync.");
-      }
-    } else {
-      Serial.println("[API] Wi-Fi not connected. DB registration skipped for now.");
-    }
-  }
-
   // BLEデバイス・サーバーの初期化
   String bleDeviceName = "COCO-" + deviceId.substring(0, 8);
   NimBLEDevice::init(bleDeviceName.c_str());
@@ -99,14 +86,12 @@ void BleManager::init() {
     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
   );
 
- // アドバタイズ開始
+  // アドバタイズ開始
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   NimBLEDevice::startAdvertising();
-}
 
 String BleManager::getTimestamp() {
-  // 起動からの経過時間を文字列として返す
   unsigned long sec = millis() / 1000;
   char buf[20];
   snprintf(buf, sizeof(buf), "+%lu sec", sec);
@@ -122,34 +107,86 @@ void BleManager::onConnect(NimBLEServer* pServer) {
 void BleManager::onDisconnect(NimBLEServer* pServer) {
   deviceConnected = false;
   StateManager::changeState(STATE_IDLE);
-  NimBLEDevice::startAdvertising(); // 切断時は自動で再アドバタイズ
+  NimBLEDevice::startAdvertising();
 }
 
 void BleManager::onWrite(NimBLECharacteristic* pCharacteristic) {
   std::string val = pCharacteristic->getValue();
-  if (val.length() > 0) {
-    String payload = String(val.c_str());
+  if (val.length() == 0) return;
+
+  String payload = String(val.c_str());
+  static String wifiSsid = "";
+  static String wifiPass = "";
+
+  // 1. スポット名 / ステッカーID 設定
+  if (payload.startsWith("SPOT:")) {
+    spotName = payload.substring(5);
+  } 
+  else if (payload.startsWith("STICKER:")) {
+    distributeStickerId = payload.substring(8);
+  } 
+  else if (payload == "GET_LOGS") {
+    stickerSosMgr.flushLogsToBle();
+  }
+  // 2. Wi-Fi SSID / PASS 受信設定
+  else if (payload.startsWith("SSID:")) {
+    wifiSsid = payload.substring(5);
+    Serial.printf("[BLE] Received SSID: %s\n", wifiSsid.c_str());
+  } 
+  else if (payload.startsWith("PASS:")) {
+    wifiPass = payload.substring(5);
+    Serial.println("[BLE] Received Password.");
+  }
+
+  // SSID と PASS の両方が揃ったら Wi-Fi 接続処理を開始
+  if (wifiSsid.length() > 0 && wifiPass.length() > 0) {
+    Serial.println("[WiFi] Connecting with received credentials...");
     
-    // 受信コマンドの解析
-    if (payload.startsWith("STICKER:")) {
-      distributeStickerId = payload.substring(8);
-    } else if (payload.startsWith("SPOT:")) {
-      spotName = payload.substring(5);
-    } else if (payload == "GET_LOGS") {
-      stickerSosMgr.flushLogsToBle();
+    // NVS に Wi-Fi 情報を保存
+    Preferences prefs;
+    prefs.begin("gateway_cfg", false);
+    prefs.putString("wifi_ssid", wifiSsid);
+    prefs.putString("wifi_pass", wifiPass);
+    prefs.end();
+
+    WiFi.disconnect();
+    WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+
+    // 接続待ち（タイムアウト: 8秒）
+    unsigned long startTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 8000) {
+      delay(200);
     }
 
-    lastSyncTime = "iPad Synced";
-    updateStatus();
-    StateManager::changeState(STATE_IDLE);
+    if (WiFi.status() == WL_CONNECTED) {
+      uint8_t ch = WiFi.channel();
+      Serial.printf("[WiFi] Connected! Channel: %d\n", ch);
+
+      // ESP-NOWのチャンネルを合致させる
+      esp_wifi_set_promiscuous(true);
+      esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+      esp_wifi_set_promiscuous(false);
+
+      // 接続できたタイミングで、未登録であれば DB へ登録
+      serverApiMgr.registerGateway(deviceId, spotName);
+    } else {
+      Serial.println("[WiFi] Connection failed. Resetting inputs.");
+    }
+
+    // 接続試行完了後に一時保持をクリア
+    wifiSsid = "";
+    wifiPass = "";
   }
+
+  lastSyncTime = "iPad Synced";
+  updateStatus();
+  StateManager::changeState(STATE_IDLE);
 }
 
 void BleManager::updateStatus() {
   if (!pStatusChar) return;
   
-  // 現在の設定状態をJSONでNotify通知
-  String status = "{\"station_id\":\"" + deviceId + "\",\"spot_name\":\"" + spotName + "\",\"distribute_sticker_id\":\"" + distributeStickerId + "\"}";
+  String status = "{\"station_id\":\"" + deviceId + "\",\"spot_name\":\"" + spotName + "\",\"distribute_sticker_id\":\"" + distributeStickerId + "\",\"wifi_connected\":" + (WiFi.status() == WL_CONNECTED ? "true" : "false") + "}";
   pStatusChar->setValue((uint8_t*)status.c_str(), status.length());
   pStatusChar->notify();
 }
@@ -157,7 +194,6 @@ void BleManager::updateStatus() {
 void BleManager::sendLogsToApp(const String& jsonLogs) {
   if (!pLogChar || !deviceConnected) return;
   
-  // 蓄積されたログデータをアプリへNotify送信
   pLogChar->setValue((uint8_t*)jsonLogs.c_str(), jsonLogs.length());
   pLogChar->notify();
 }

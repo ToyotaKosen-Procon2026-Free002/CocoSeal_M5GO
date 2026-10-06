@@ -27,15 +27,8 @@ void setup() {
   ledBuzzerMgr.init();
   delay(50);
 
-// Wi-Fiルーターへ接続するとき
-// WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
-// while (WiFi.status() != WL_CONNECTED) { delay(500); }
-
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  
-  // Wi-Fi接続処理（接続したいSSIDとPASSを設定）
-  //WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
 
   // クラッシュ防止
   unsigned long startAttemptTime = millis();
