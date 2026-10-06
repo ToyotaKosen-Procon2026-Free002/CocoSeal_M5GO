@@ -11,6 +11,7 @@
 #define CHAR_CONFIG_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define CHAR_LOG_UUID          "1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e"
 #define CHAR_STATUS_UUID       "d29ae63e-b7d3-4874-a690-3432b85e05a5"
+#define GATEWAY_DEVICE_UUID    "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 // BLEのステータス
 enum State {
