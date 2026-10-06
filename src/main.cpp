@@ -79,6 +79,9 @@ void loop() {
   if (M5.BtnA.wasPressed()) {
     stickerSosMgr.resetDailyData();
 
+    //自動更新タイマーをリセット
+    lastBatteryCheckTime = millis();
+
     // 画面に一時的にリセット完了を表示
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(20, 100);
