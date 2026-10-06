@@ -11,6 +11,10 @@
 #define LORA_RX_PIN 16
 #define LORA_TX_PIN 17
 
+// タイマー用変数
+unsigned long lastBatteryCheckTime = 0;
+const unsigned long BATTERY_CHECK_INTERVAL = 600000; // 600秒(10分)ごとに自動更新 (ミリ秒)
+
 void setup() {
   // M5Stack本体 & 電源管理の初期化
   M5.begin(true, false, true);
@@ -64,6 +68,12 @@ void loop() {
     stickerSosMgr.handleSos("TEST-SOS", "BUTTON_C");
   }
   */
+
+  // 定期的に画面を更新してバッテリー残量を最新化する
+  if (millis() - lastBatteryCheckTime > BATTERY_CHECK_INTERVAL) {
+    lastBatteryCheckTime = millis();
+    displayMgr.update(); // 画面を再描画してバッテリー表示を最新にする
+  }
 
   // 左ボタン（BtnA）が押されたらリセット実行
   if (M5.BtnA.wasPressed()) {
