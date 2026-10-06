@@ -13,15 +13,20 @@ StickerSosManager::StickerSosManager() {}
 void StickerSosManager::handleSos(const String& childId, const String& source) {
   String timestamp = bleMgr.getTimestamp();
 
-  // 1. 内部ログ（未送信キャッシュ）に追加
-  pendingSosLogs.push_back({childId, timestamp});
-
-  // 2. 音とLEDで緊急警報を作動
+  // 1. 音とLEDで緊急警報を作動
   ledBuzzerMgr.showRealSos();
   StateManager::changeState(STATE_SOS_ALERT);
 
-  // 3. Wi-Fiに繋がっていればサーバーへ直通送信 (POST /devices/sos)
-  serverApiMgr.sendSosAlert(bleMgr.deviceId, childId);
+  // 2. Wi-Fiに繋がっていればサーバーへ直通送信 (POST /devices/sos)
+  bool sentSuccess = serverApiMgr.sendSosAlert(bleMgr.deviceId, childId);
+
+  // 3. サーバー送信に失敗した場合（オフライン時等）のみ、内部ログ（未送信キャッシュ）に追加
+  if (!sentSuccess) {
+    pendingSosLogs.push_back({childId, timestamp});
+    Serial.println("[SOS Log] Direct send failed or offline. Saved to pending queue.");
+  } else {
+    Serial.println("[SOS Log] Direct send success. Skipped saving to pending queue.");
+  }
 }
 
 // ESP-NOW パケット受信時の処理 (通過 / SOS)
@@ -49,9 +54,6 @@ void StickerSosManager::handlePacket(const CommunicationPacket& packet, int rssi
         // 本日の配布リストに登録
         distributedTodayList.push_back(senderId);
 
-        // 内部通過ログに追加
-        pendingDistributeLogs.push_back({senderId, timestamp});
-
         // 子機へシール情報を返信
         EspNowManager::sendSticker(bleMgr.deviceId, bleMgr.distributeStickerId);
 
@@ -59,7 +61,15 @@ void StickerSosManager::handlePacket(const CommunicationPacket& packet, int rssi
         StateManager::changeState(STATE_STICKER_DISPLAY);
 
         // Wi-Fiに繋がっていればサーバーへ直通送信 (POST /devices/status)
-        serverApiMgr.sendStatusAndPassageLogs(bleMgr.deviceId, senderId, bleMgr.distributeStickerId);
+        bool sentSuccess = serverApiMgr.sendStatusAndPassageLogs(bleMgr.deviceId, senderId, bleMgr.distributeStickerId);
+
+        // サーバー送信に失敗した場合（オフライン時等）のみ、内部通過ログ（未送信キャッシュ）に追加
+        if (!sentSuccess) {
+          pendingDistributeLogs.push_back({senderId, timestamp});
+          Serial.println("[Passage Log] Direct send failed or offline. Saved to pending queue.");
+        } else {
+          Serial.println("[Passage Log] Direct send success. Skipped saving to pending queue.");
+        }
       }
     }
   }

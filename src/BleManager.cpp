@@ -86,10 +86,13 @@ void BleManager::init() {
     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
   );
 
+  pService->start();
+
   // アドバタイズ開始
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   NimBLEDevice::startAdvertising();
+}
 
 String BleManager::getTimestamp() {
   unsigned long sec = millis() / 1000;
