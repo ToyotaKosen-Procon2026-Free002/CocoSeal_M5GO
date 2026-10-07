@@ -5,13 +5,16 @@
 class BleManager : public NimBLEServerCallbacks, public NimBLECharacteristicCallbacks {
 private:
   NimBLEServer* pServer = nullptr;
-  
+
   // 設定・ログ・ステータス
   NimBLECharacteristic* pConfigChar = nullptr;
   NimBLECharacteristic* pLogChar = nullptr;
   NimBLECharacteristic* pStatusChar = nullptr;
-  
+
   bool deviceConnected = false;
+
+  // DB登録をBLEコールバックの外で行うためのフラグ
+  bool gatewayRegistrationPending = false;
 
 public:
   // 設定値・保持データ
@@ -25,6 +28,9 @@ public:
   void updateStatus();
   void sendLogsToApp(const String& jsonLogs);
   String getTimestamp();
+
+  // loop() から呼び出す
+  void processPendingTasks();
 
   // BLEイベントコールバック
   void onConnect(NimBLEServer* pServer) override;

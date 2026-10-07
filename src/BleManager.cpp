@@ -34,24 +34,22 @@ void BleManager::init() {
   spotName = "Unregistered";
   distributeStickerId = "st_110";
   lastSyncTime = "None";
+  gatewayRegistrationPending = false;
 
   // UUID の読み出し / 初回生成
   Preferences prefs;
   prefs.begin("gateway_cfg", false);
 
-  bool isNewDevice = false;
-
   if (prefs.isKey("gateway_id")) {
-    // 過去に保存されたUUIDがあればそれを取得
     deviceId = prefs.getString("gateway_id");
     Serial.println("\n[NVS] Loaded existing Gateway UUID from Flash Memory.");
   } else {
-    // 初回起動時：新しいUUIDを生成してNVSに書き込み保存
     deviceId = generateUUID();
     prefs.putString("gateway_id", deviceId);
-    isNewDevice = true;
+
     Serial.println("\n[NVS] No UUID found. Generated & saved NEW Gateway UUID!");
   }
+
   prefs.end();
 
   // ターミナル出力
@@ -96,107 +94,242 @@ void BleManager::init() {
 
 String BleManager::getTimestamp() {
   unsigned long sec = millis() / 1000;
+
   char buf[20];
   snprintf(buf, sizeof(buf), "+%lu sec", sec);
+
   return String(buf);
 }
 
 void BleManager::onConnect(NimBLEServer* pServer) {
   deviceConnected = true;
+
   StateManager::changeState(STATE_BLE_CONNECTED);
   updateStatus();
 }
 
 void BleManager::onDisconnect(NimBLEServer* pServer) {
   deviceConnected = false;
+
   StateManager::changeState(STATE_IDLE);
   NimBLEDevice::startAdvertising();
 }
 
 void BleManager::onWrite(NimBLECharacteristic* pCharacteristic) {
   std::string val = pCharacteristic->getValue();
-  if (val.length() == 0) return;
+
+  if (val.length() == 0) {
+    return;
+  }
 
   String payload = String(val.c_str());
+
   static String wifiSsid = "";
   static String wifiPass = "";
 
-  // 1. スポット名 / ステッカーID 設定
+  // スポット名
   if (payload.startsWith("SPOT:")) {
     spotName = payload.substring(5);
-  } 
+  }
+
+  // 配布ステッカー
   else if (payload.startsWith("STICKER:")) {
     distributeStickerId = payload.substring(8);
-  } 
+  }
+
+  // ログ取得
   else if (payload == "GET_LOGS") {
     stickerSosMgr.flushLogsToBle();
   }
-  // 2. Wi-Fi SSID / PASS 受信設定
+
+  // Wi-Fi SSID
   else if (payload.startsWith("SSID:")) {
     wifiSsid = payload.substring(5);
-    Serial.printf("[BLE] Received SSID: %s\n", wifiSsid.c_str());
-  } 
+
+    Serial.printf(
+      "[BLE] Received SSID: %s\n",
+      wifiSsid.c_str()
+    );
+  }
+
+  // Wi-Fi Password
   else if (payload.startsWith("PASS:")) {
     wifiPass = payload.substring(5);
+
     Serial.println("[BLE] Received Password.");
   }
 
-  // SSID と PASS の両方が揃ったら Wi-Fi 接続処理を開始
+  // SSID と PASS が揃った
   if (wifiSsid.length() > 0 && wifiPass.length() > 0) {
-    Serial.println("[WiFi] Connecting with received credentials...");
-    
-    // NVS に Wi-Fi 情報を保存
+
+    Serial.println(
+      "[WiFi] Connecting with received credentials..."
+    );
+
+    // NVSに保存
     Preferences prefs;
+
     prefs.begin("gateway_cfg", false);
+
     prefs.putString("wifi_ssid", wifiSsid);
     prefs.putString("wifi_pass", wifiPass);
+
     prefs.end();
 
+    // Wi-Fi接続
     WiFi.disconnect();
-    WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+    WiFi.begin(
+      wifiSsid.c_str(),
+      wifiPass.c_str()
+    );
 
-    // 接続待ち（タイムアウト: 8秒）
     unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 8000) {
+
+    // 最大15秒待つ
+    while (
+      WiFi.status() != WL_CONNECTED &&
+      millis() - startTime < 15000
+    ) {
       delay(200);
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-      uint8_t ch = WiFi.channel();
-      Serial.printf("[WiFi] Connected! Channel: %d\n", ch);
+    Serial.printf(
+      "[WiFi] Final status: %d\n",
+      WiFi.status()
+    );
 
-      // ESP-NOWのチャンネルを合致させる
+    Serial.printf(
+      "[WiFi] Local IP: %s\n",
+      WiFi.localIP().toString().c_str()
+    );
+
+    if (WiFi.status() == WL_CONNECTED) {
+
+      uint8_t ch = WiFi.channel();
+
+      Serial.printf(
+        "[WiFi] Connected! Channel: %d\n",
+        ch
+      );
+
+      // ESP-NOWのチャンネルをWi-Fiに合わせる
       esp_wifi_set_promiscuous(true);
-      esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+
+      esp_wifi_set_channel(
+        ch,
+        WIFI_SECOND_CHAN_NONE
+      );
+
       esp_wifi_set_promiscuous(false);
 
-      // 接続できたタイミングで、未登録であれば DB へ登録
-      serverApiMgr.registerGateway(deviceId, spotName);
+      // ★重要
+      // ここではDB通信しない。
+      // loop()側で登録させる。
+      gatewayRegistrationPending = true;
+
+      Serial.println(
+        "[Gateway] Registration queued."
+      );
+
     } else {
-      Serial.println("[WiFi] Connection failed. Resetting inputs.");
+
+      Serial.println(
+        "[WiFi] Connection failed. Resetting inputs."
+      );
     }
 
-    // 接続試行完了後に一時保持をクリア
+    // 一時保持をクリア
     wifiSsid = "";
     wifiPass = "";
   }
 
   lastSyncTime = "iPad Synced";
+
   updateStatus();
+
   StateManager::changeState(STATE_IDLE);
 }
 
-void BleManager::updateStatus() {
-  if (!pStatusChar) return;
-  
-  String status = "{\"station_id\":\"" + deviceId + "\",\"spot_name\":\"" + spotName + "\",\"distribute_sticker_id\":\"" + distributeStickerId + "\",\"wifi_connected\":" + (WiFi.status() == WL_CONNECTED ? "true" : "false") + "}";
-  pStatusChar->setValue((uint8_t*)status.c_str(), status.length());
-  pStatusChar->notify();
+
+// ========================================
+// loop()から実行される処理
+// ========================================
+
+void BleManager::processPendingTasks() {
+
+  if (!gatewayRegistrationPending) {
+    return;
+  }
+
+  // フラグを先に下げて二重実行防止
+  gatewayRegistrationPending = false;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println(
+      "[Gateway] Registration cancelled: Wi-Fi disconnected."
+    );
+
+    return;
+  }
+
+  Serial.println(
+    "[Gateway] Starting DB registration outside BLE callback..."
+  );
+
+  // ★ここならnimble_hostのコールバック外
+  serverApiMgr.registerGateway(
+    deviceId,
+    spotName
+  );
+
+  Serial.println(
+    "[Gateway] DB registration finished."
+  );
+
+  updateStatus();
 }
 
-void BleManager::sendLogsToApp(const String& jsonLogs) {
-  if (!pLogChar || !deviceConnected) return;
-  
-  pLogChar->setValue((uint8_t*)jsonLogs.c_str(), jsonLogs.length());
+
+void BleManager::updateStatus() {
+  if (!pStatusChar) {
+    return;
+  }
+
+  String status =
+    "{\"station_id\":\"" +
+    deviceId +
+    "\",\"spot_name\":\"" +
+    spotName +
+    "\",\"distribute_sticker_id\":\"" +
+    distributeStickerId +
+    "\",\"wifi_connected\":" +
+    (WiFi.status() == WL_CONNECTED ? "true" : "false") +
+    "}";
+
+  pStatusChar->setValue(
+    (uint8_t*)status.c_str(),
+    status.length()
+  );
+
+  // BLE接続中だけnotify
+  if (deviceConnected) {
+    pStatusChar->notify();
+  }
+}
+
+
+void BleManager::sendLogsToApp(
+  const String& jsonLogs
+) {
+
+  if (!pLogChar || !deviceConnected) {
+    return;
+  }
+
+  pLogChar->setValue(
+    (uint8_t*)jsonLogs.c_str(),
+    jsonLogs.length()
+  );
+
   pLogChar->notify();
 }

@@ -49,6 +49,8 @@ void setup() {
 
 void loop() {
   M5.update();
+  
+  bleMgr.processPendingTasks();
 
   // ===================
   // 【テスト用コード】
