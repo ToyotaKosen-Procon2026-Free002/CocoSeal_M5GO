@@ -1,4 +1,7 @@
 #include "ServerApiManager.h"
+#include <ArduinoJson.h>
+#include "BleManager.h"
+#include "StateManager.h"
 
 ServerApiManager serverApiMgr;
 
@@ -174,6 +177,30 @@ bool ServerApiManager::fetchGatewayInfo(
         response.c_str()
       );
 
+      // ★ ArduinoJson v7 対応（JsonDocument を使用）
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, response);
+
+      if (!error) {
+        bool updated = false;
+
+        if (doc["spot_name"].is<String>()) {
+          bleMgr.spotName = doc["spot_name"].as<String>();
+          updated = true;
+        }
+        if (doc["distribute_sticker_id"].is<String>()) {
+          bleMgr.distributeStickerId = doc["distribute_sticker_id"].as<String>();
+          updated = true;
+        }
+
+        // 変更があれば画面表示を更新
+        if (updated) {
+          StateManager::changeState(STATE_IDLE);
+        }
+      } else {
+        Serial.printf("[API JSON Parse Error] %s\n", error.c_str());
+      }
+
       http.end();
 
       return true;
@@ -272,7 +299,7 @@ bool ServerApiManager::registerGateway(
     );
 
 
-    // ★ サーバーから返された内容を表示
+    // サーバーから返された内容を表示
     String response =
       http.getString();
 
