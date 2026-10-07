@@ -4,7 +4,6 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
-// Micro-ECC または mbedtls 用
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/entropy.h"
@@ -16,25 +15,26 @@ private:
   mbedtls_pk_context pk;
   bool keyInitialized = false;
 
-  // ECDSA SECP256R1 (P-256) 鍵ペアの初期化・生成
   void initKeys();
-  // リクエストデータに対するECDSA署名の生成 (Hex文字列で返却)
   String signMessage(const String& message);
 
 public:
   ServerApiManager();
   ~ServerApiManager();
 
-  // 認証付き親機情報取得 (GET /gateway)
+  // 公開鍵を Hex (130文字) で取得
+  String getPublicKeyHex();
+
+  // 認証付き親機情報取得 (GET /devices/gateway/{gateway_id})
   bool fetchGatewayInfo(const String& gatewayId);
 
-  // 1. 親機の初回登録 (POST /devices/gateway)
+  // 1. 親機の初回登録・アクティベート (POST /devices/gateway/init)
   bool registerGateway(const String& gatewayId, const String& spotName);
 
-  // 2. すれ違い・ステータス情報の更新 (POST /devices/status)
+  // 2. すれ違い・ステータス情報の更新
   bool sendStatusAndPassageLogs(const String& gatewayId, const String& childId, const String& stickerId);
 
-  // 3. SOS情報の送信 (POST /devices/sos)
+  // 3. SOS情報の送信
   bool sendSosAlert(const String& gatewayId, const String& childId);
 };
 

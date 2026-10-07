@@ -2,13 +2,11 @@
 #include "StickerSosManager.h"
 #include <WiFi.h>
 
-// ESP-NOWのC言語用コールバック関数からC++クラス静的メソッドへ接続するためのラッパー
 static void onDataRecvWrapper(const uint8_t* mac, const uint8_t* incomingData, int len) {
   EspNowManager::onDataRecv(mac, incomingData, len);
 }
 
 void EspNowManager::init() {
-  // ESP-NOWの初期化 & 受信コールバック登録
   if (esp_now_init() == ESP_OK) {
     esp_now_register_recv_cb(onDataRecvWrapper);
   }
@@ -26,7 +24,6 @@ void EspNowManager::sendSticker(const String& stationId, const String& stickerId
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   
-  // 接続されている場合はそのチャンネル、未接続(0)なら 1 に固定して安全化
   uint8_t currentCh = WiFi.channel();
   peerInfo.channel = (currentCh > 0) ? currentCh : 1;
   peerInfo.encrypt = false;
@@ -39,10 +36,13 @@ void EspNowManager::sendSticker(const String& stationId, const String& stickerId
 }
 
 void EspNowManager::onDataRecv(const uint8_t* mac, const uint8_t* incomingData, int len) {
-  // パケットサイズが想定と一致する場合のみ正常処理
+  // パケットサイズが 64 バイト（sizeof(CommunicationPacket)）と一致する場合に処理
   if (len == sizeof(CommunicationPacket)) {
     CommunicationPacket packet;
     memcpy(&packet, incomingData, sizeof(CommunicationPacket));
-    stickerSosMgr.handlePacket(packet, -50);
+    // 近接受信のため RSSI -60 としてハンドラに伝達
+    stickerSosMgr.handlePacket(packet, -60);
+  } else {
+    Serial.printf("[ESP-NOW] Invalid Packet Size: %d (Expected: %d)\n", len, (int)sizeof(CommunicationPacket));
   }
 }

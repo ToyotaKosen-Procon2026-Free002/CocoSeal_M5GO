@@ -2,6 +2,9 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
+#include <time.h>
+#include <sys/time.h>
+#include <HTTPClient.h>
 #include "DisplayManager.h"
 #include "StateManager.h"
 #include "BleManager.h"
@@ -15,11 +18,68 @@
 
 // タイマー用変数
 unsigned long lastBatteryCheckTime = 0;
-const unsigned long BATTERY_CHECK_INTERVAL = 600000; // 600秒(10分)ごとに自動更新 (ミリ秒)
+const unsigned long BATTERY_CHECK_INTERVAL = 600000; // 10分ごと
 
 // 定期設定取得タイマー（1分ごとにサーバーから最新設定を取得）
 unsigned long lastFetchConfigTime = 0;
 const unsigned long FETCH_CONFIG_INTERVAL = 60000;
+
+// 時刻同期関数（NTP優先、失敗時は2026年フォールバック）
+void syncSystemTime() {
+  Serial.print("[Time Sync] Trying NTP sync...");
+  configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov"); // JST: UTC+9
+
+  struct tm timeinfo;
+  unsigned long start = millis();
+  while (!getLocalTime(&timeinfo) && millis() - start < 4000) {
+    delay(200);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (getLocalTime(&timeinfo)) {
+    Serial.printf("[Time Sync] NTP Success: %04d-%02d-%02d %02d:%02d:%02d\n",
+                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                  timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    return;
+  }
+
+  // NTP失敗時のフォールバック (2026年10月のUnixTimeを自動セット)
+  Serial.println("[Time Sync] NTP failed. Applying Oct 2026 fallback time...");
+  struct timeval tv = { 1791500000, 0 };
+  settimeofday(&tv, NULL);
+}
+
+void connectSavedWiFi() {
+  Preferences prefs;
+  prefs.begin("gateway_cfg", true); // 読み取りモード
+  String savedSsid = prefs.getString("wifi_ssid", "");
+  String savedPass = prefs.getString("wifi_pass", "");
+  prefs.end();
+
+  if (savedSsid.length() == 0) {
+    Serial.println("[WiFi] No saved WiFi credentials found in NVS.");
+    return;
+  }
+
+  Serial.printf("[WiFi] Connecting to saved SSID: %s\n", savedSsid.c_str());
+  WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    delay(200);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[WiFi] Connected successfully! IP: %s\n", WiFi.localIP().toString().c_str());
+    syncSystemTime();
+  } else {
+    Serial.println("[WiFi] Failed to connect using saved credentials.");
+    WiFi.disconnect();
+  }
+}
 
 void setup() {
   // M5Stack本体 & 電源管理の初期化
@@ -36,34 +96,12 @@ void setup() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
 
-  // NVSから保存されている Wi-Fi 情報を読み出して自動接続
-  Preferences prefs;
-  prefs.begin("gateway_cfg", true);
-  String savedSsid = prefs.getString("wifi_ssid", "");
-  String savedPass = prefs.getString("wifi_pass", "");
-  prefs.end();
+  // NVSに保存されているWi-Fi情報を使って接続を試みる
+  connectSavedWiFi();
 
-  uint8_t primaryChannel = 1;
+  uint8_t primaryChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 1;
 
-  if (savedSsid.length() > 0) {
-    Serial.printf("[WiFi] Auto connecting to: %s\n", savedSsid.c_str());
-    WiFi.begin(savedSsid.c_str(), savedPass.c_str());
-
-    unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 5000) {
-      delay(100);
-    }
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    primaryChannel = WiFi.channel();
-    Serial.printf("[WiFi] Auto connected! Channel: %d\n", primaryChannel);
-  } else {
-    Serial.println("[WiFi] Not connected on boot.");
-    WiFi.disconnect();
-  }
-
-  // ESP-NOWの現在チャンネルに合わせる
+  // ESP-NOWのチャンネルをWi-Fiに合わせる
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(primaryChannel, WIFI_SECOND_CHAN_NONE);
   esp_wifi_set_promiscuous(false);
@@ -72,8 +110,10 @@ void setup() {
   EspNowManager::init();
   bleMgr.init();
 
-  // 起動時に Wi-Fi が繋がっていればサーバーから最新の設定（スポット名・シールID）を取得
+  // 起動時に Wi-Fi が繋がっていればサーバーへ自己登録および最新設定取得
   if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("[Server] Registering Gateway & Fetching Config...");
+    serverApiMgr.registerGateway(bleMgr.deviceId, bleMgr.spotName);
     serverApiMgr.fetchGatewayInfo(bleMgr.deviceId);
   }
 
@@ -87,10 +127,10 @@ void setup() {
 void loop() {
   M5.update();
   
-  // バックグラウンドタスク処理（DB登録など）
+  // バックグラウンドタスク処理（BLE経由の設定書き込みやDB登録など）
   bleMgr.processPendingTasks();
 
-  // Wi-Fi接続時、1分ごとにサーバーAPIから設定（スポット名・シールID）を取得して同期
+  // Wi-Fi接続時、1分ごとにサーバーAPIから設定を取得して同期
   if (WiFi.status() == WL_CONNECTED && (millis() - lastFetchConfigTime > FETCH_CONFIG_INTERVAL)) {
     lastFetchConfigTime = millis();
     serverApiMgr.fetchGatewayInfo(bleMgr.deviceId);
@@ -105,11 +145,8 @@ void loop() {
   // 左ボタン（BtnA）が押されたらリセット実行
   if (M5.BtnA.wasPressed()) {
     stickerSosMgr.resetDailyData();
-
-    // 自動更新タイマーをリセット
     lastBatteryCheckTime = millis();
 
-    // 画面に一時的にリセット完了を表示
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(20, 100);
     M5.Lcd.setTextColor(GREEN);
@@ -117,7 +154,6 @@ void loop() {
     M5.Lcd.println("RESET DONE!");
     delay(1000);
 
-    // 文字サイズを標準（サイズ2）に戻してから待機画面に遷移
     M5.Lcd.setTextSize(2); 
     StateManager::changeState(STATE_IDLE);
   }

@@ -6,17 +6,17 @@ class BleManager : public NimBLEServerCallbacks, public NimBLECharacteristicCall
 private:
   NimBLEServer* pServer = nullptr;
 
-  // 設定・ログ・ステータス
   NimBLECharacteristic* pConfigChar = nullptr;
   NimBLECharacteristic* pLogChar = nullptr;
   NimBLECharacteristic* pStatusChar = nullptr;
 
   bool deviceConnected = false;
-
-  // DB登録をBLEコールバックの外で行うためのフラグ
   bool gatewayRegistrationPending = false;
 
 public:
+  // 仮想デストラクタを追加
+  virtual ~BleManager() = default;
+
   // 設定値・保持データ
   String deviceId;
   String spotName;
