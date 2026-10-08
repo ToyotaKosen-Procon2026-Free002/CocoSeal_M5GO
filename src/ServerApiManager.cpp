@@ -6,7 +6,6 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <mbedtls/sha256.h>
-#include <esp_random.h>
 #include <time.h>
 
 ServerApiManager serverApiMgr;
@@ -21,17 +20,6 @@ String formatIsoTimestamp(time_t timestamp) {
   return String(formatted);
 }
 
-String makeEventId() {
-  char eventId[37];
-  snprintf(eventId, sizeof(eventId), "%08lx-%04x-4%03lx-%04x-%08lx%04x",
-           static_cast<unsigned long>(esp_random()),
-           static_cast<unsigned int>(esp_random() >> 16),
-           static_cast<unsigned long>(esp_random() & 0x0fff),
-           static_cast<unsigned int>((esp_random() & 0x3fff) | 0x8000),
-           static_cast<unsigned long>(esp_random()),
-           static_cast<unsigned int>(esp_random() & 0xffff));
-  return String(eventId);
-}
 }
 
 ServerApiManager::ServerApiManager() {
@@ -328,29 +316,19 @@ bool ServerApiManager::sendStatusAndPassageLogs(const String& gatewayId, const S
   client.setInsecure();
 
   HTTPClient http;
-  String url = String(serverUrl) + "/devices/status";
+  String url = String(serverUrl) + "/devices/status_from_gateway";
 
   const time_t eventTime = time(nullptr);
   const String timestamp = formatIsoTimestamp(eventTime);
-  const String eventId = makeEventId();
 
   JsonDocument doc;
-  doc["device_id"] = gatewayId;
-  doc["request_id"] = makeEventId();
-  doc["timestamp"] = timestamp;
+  doc["station_id"] = gatewayId;
 
-  JsonArray communications = doc["nearby_communications"].to<JsonArray>();
-  JsonObject communication = communications.add<JsonObject>();
-  communication["event_id"] = eventId;
-  communication["my_id"] = gatewayId;
-  communication["partner_id"] = childId;
-  communication["partner_is_gateway"] = false;
-  communication["send_seal_id"] = stickerId;
-  communication["timestamp"] = timestamp;
-  communication["partner_name"] = childId;
-  String signedFields = eventId + "|" + gatewayId + "|" + childId + "|0|" + stickerId + "||" + String(static_cast<long>(eventTime));
-  signedFields.toLowerCase();
-  communication["signature"] = signMessage(signedFields);
+  JsonArray encounterLogs = doc["encounter_logs"].to<JsonArray>();
+  JsonObject encounterLog = encounterLogs.add<JsonObject>();
+  encounterLog["device_id_2"] = childId;
+  encounterLog["device_timestamp"] = timestamp;
+  encounterLog["send_seal_id"] = stickerId;
 
   String jsonBody;
   serializeJson(doc, jsonBody);
@@ -363,8 +341,8 @@ bool ServerApiManager::sendStatusAndPassageLogs(const String& gatewayId, const S
   }
 
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Device-Id", gatewayId);
-  http.addHeader("X-Device-Signature", signature);
+  http.addHeader("X-Gateway-Id", gatewayId);
+  http.addHeader("X-Gateway-Signature", signature);
 
   int httpCode = http.POST(jsonBody);
   if (httpCode >= 200 && httpCode < 300) {

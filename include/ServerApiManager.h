@@ -36,7 +36,7 @@ public:
   // 1. 親機の初回登録・アクティベート (POST /devices/gateway/init)
   bool registerGateway(const String& gatewayId, const String& spotName);
 
-  // 2. すれ違い・ステータス情報の更新
+  // 2. 親機経由のすれ違い・配布シール情報の送信 (POST /devices/status_from_gateway)
   bool sendStatusAndPassageLogs(const String& gatewayId, const String& childId, const String& stickerId);
 
   // 3. SOS情報の送信
