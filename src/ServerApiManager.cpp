@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <mbedtls/sha256.h>
 #include <esp_random.h>
 #include <time.h>
@@ -56,19 +57,62 @@ void ServerApiManager::initKeys() {
     return;
   }
 
+  Preferences prefs;
+  prefs.begin("gateway_cfg", false);
+  const size_t savedKeyLen = prefs.getBytesLength("priv_key");
+  if (savedKeyLen > 0 && savedKeyLen <= 512) {
+    unsigned char savedKey[512];
+    const size_t bytesRead = prefs.getBytes("priv_key", savedKey, savedKeyLen);
+    if (bytesRead == savedKeyLen) {
+      ret = mbedtls_pk_parse_key(&pk, savedKey, savedKeyLen, nullptr, 0);
+      if (ret == 0 && mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+        keyInitialized = true;
+        prefs.end();
+        Serial.println("[Server] Loaded persistent gateway signing key.");
+        return;
+      }
+      Serial.printf("[Server] Saved signing key is invalid: %d\n", ret);
+      mbedtls_pk_free(&pk);
+      mbedtls_pk_init(&pk);
+    }
+    prefs.remove("priv_key");
+  }
+
   ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
   if (ret != 0) {
+    prefs.end();
     Serial.printf("[Server] Failed to setup PK context: %d\n", ret);
     return;
   }
 
   ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(pk), mbedtls_ctr_drbg_random, &ctrDrbg);
   if (ret != 0) {
+    prefs.end();
     Serial.printf("[Server] Failed to generate EC key: %d\n", ret);
     return;
   }
 
+  unsigned char encodedKey[512];
+  const int encodedKeyLen = mbedtls_pk_write_key_der(&pk, encodedKey, sizeof(encodedKey));
+  if (encodedKeyLen <= 0) {
+    prefs.end();
+    Serial.printf("[Server] Failed to serialize signing key: %d\n", encodedKeyLen);
+    return;
+  }
+
+  const size_t bytesWritten = prefs.putBytes(
+    "priv_key",
+    encodedKey + sizeof(encodedKey) - encodedKeyLen,
+    encodedKeyLen
+  );
+  prefs.end();
+  if (bytesWritten != static_cast<size_t>(encodedKeyLen)) {
+    Serial.println("[Server] Failed to persist signing key.");
+    return;
+  }
+
   keyInitialized = true;
+  Serial.println("[Server] Generated and saved persistent gateway signing key.");
 }
 
 String ServerApiManager::signMessage(const String& message) {
@@ -177,7 +221,7 @@ bool ServerApiManager::registerGateway(const String& gatewayId, const String& sp
     return false;
   }
 
-  DynamicJsonDocument doc(1024);
+  JsonDocument doc;
   doc["id"] = gatewayId;
   doc["name"] = spotName;
   doc["public_key"] = formattedPublicKey;
@@ -205,7 +249,23 @@ bool ServerApiManager::registerGateway(const String& gatewayId, const String& sp
   Serial.printf("[API Register Gateway] Response: %s\n", response.c_str());
 
   http.end();
-  return httpCode >= 200 && httpCode < 300;
+  if (httpCode < 200 || httpCode >= 300) {
+    return false;
+  }
+
+  JsonDocument responseDoc;
+  DeserializationError error = deserializeJson(responseDoc, response);
+  if (error || !responseDoc["success"].is<bool>()) {
+    Serial.println("[API Register Gateway Error] Response did not contain a valid success field.");
+    return false;
+  }
+
+  if (!responseDoc["success"].as<bool>()) {
+    Serial.println("[API Register Gateway] Server returned success=false; registration did not create/update the gateway.");
+    return false;
+  }
+
+  return true;
 }
 
 bool ServerApiManager::fetchGatewayInfo(const String& gatewayId) {
@@ -235,13 +295,13 @@ bool ServerApiManager::fetchGatewayInfo(const String& gatewayId) {
   if (httpCode == 200) {
     Serial.printf("[API Get Gateway Info Success] Response: %s\n", response.c_str());
 
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, response);
     if (!error) {
-      if (doc.containsKey("name")) {
+      if (doc["name"].is<String>()) {
         bleMgr.spotName = doc["name"].as<String>();
       }
-      if (doc.containsKey("distribute_seal_id")) {
+      if (doc["distribute_seal_id"].is<String>()) {
         bleMgr.distributeStickerId = doc["distribute_seal_id"].as<String>();
       }
     } else {
@@ -274,7 +334,7 @@ bool ServerApiManager::sendStatusAndPassageLogs(const String& gatewayId, const S
   const String timestamp = formatIsoTimestamp(eventTime);
   const String eventId = makeEventId();
 
-  DynamicJsonDocument doc(1024);
+  JsonDocument doc;
   doc["device_id"] = gatewayId;
   doc["request_id"] = makeEventId();
   doc["timestamp"] = timestamp;
