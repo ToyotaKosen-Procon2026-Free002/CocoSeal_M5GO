@@ -75,8 +75,8 @@ void DisplayManager::update() {
       gfx.setFont(font16);
       gfx.setCursor(10, 85);
       gfx.printf("スポット: %s\n", spot.c_str());
-      gfx.setCursor(10, 115);
-      gfx.printf("親機 ID  : %s\n", devId.c_str());
+      // gfx.setCursor(10, 115);
+      // gfx.printf("親機 ID  : %s\n", devId.c_str());
 
       gfx.setTextColor(TFT_YELLOW, TFT_BLACK);
       gfx.setCursor(10, 155);
