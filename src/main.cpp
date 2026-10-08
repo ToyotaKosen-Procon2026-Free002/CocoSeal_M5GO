@@ -96,10 +96,10 @@ void setup() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
 
-  // ★ オフラインモード: Wi-Fi接続処理（connectSavedWiFi）をスキップ
+  // オフラインモード: Wi-Fi接続処理（connectSavedWiFi）をスキップ
   // connectSavedWiFi(); 
 
-  // ★ チャンネルを強制的に Channel 1 固定にする
+  // チャンネルを強制的に Channel 1 固定にする
   uint8_t primaryChannel = 1;
 
   // ESP-NOWのチャンネルを設定
@@ -111,7 +111,7 @@ void setup() {
   EspNowManager::init();
   bleMgr.init();
 
-  // ★ オフラインモード: サーバーへの自己登録・設定取得をスキップ
+  // オフラインモード: サーバーへの自己登録・設定取得をスキップ
   /*
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("[Server] Registering Gateway & Fetching Config...");
@@ -152,11 +152,7 @@ void loop() {
     stickerSosMgr.resetDailyData();
     lastBatteryCheckTime = millis();
 
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(20, 100);
-    M5.Lcd.setTextColor(GREEN);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.println("RESET DONE!");
+    displayMgr.showResetDone();
     delay(1000);
 
     M5.Lcd.setTextSize(2); 
