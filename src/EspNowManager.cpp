@@ -3,9 +3,7 @@
 #include "DisplayManager.h"
 #include "LedBuzzerManager.h"
 #include "StickerSosManager.h"
-#include "ServerApiManager.h"
 #include "BleManager.h"
-#include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_now.h>
 #include <esp_idf_version.h>
@@ -64,10 +62,6 @@ void onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len) {
         // M5Stackのログ保持・画面更新・シール返信処理を実行
         stickerSosMgr.handlePacket(packet, -50);
 
-        // Wi-Fi接続中であればサーバーへ通過ログを送信 (POST /devices/status)
-        if (WiFi.status() == WL_CONNECTED) {
-            serverApiMgr.sendStatusAndPassageLogs(bleMgr.deviceId, packet.device_id, bleMgr.distributeStickerId);
-        }
     } 
     // --- 2. SOSアラート受信 (MESSAGE_TYPE_SOS: 1) ---
     else if (packet.type == 1) {
@@ -76,10 +70,6 @@ void onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len) {
         // アラーム発動処理
         stickerSosMgr.handleSos(packet.device_id, "ESP-NOW");
 
-        // Wi-Fi接続中であればサーバーへSOS通知を送信 (POST /devices/sos)
-        if (WiFi.status() == WL_CONNECTED) {
-            serverApiMgr.sendSosAlert(bleMgr.deviceId, packet.device_id);
-        }
     }
 }
 

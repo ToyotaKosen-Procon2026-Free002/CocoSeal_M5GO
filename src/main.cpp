@@ -147,11 +147,7 @@ void loop() {
     stickerSosMgr.resetDailyData();
     lastBatteryCheckTime = millis();
 
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(20, 100);
-    M5.Lcd.setTextColor(GREEN);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.println("RESET DONE!");
+    displayMgr.showResetDone();
     delay(1000);
 
     M5.Lcd.setTextSize(2); 
