@@ -96,12 +96,13 @@ void setup() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
 
-  // NVSに保存されているWi-Fi情報を使って接続を試みる
-  connectSavedWiFi();
+  // ★ オフラインモード: Wi-Fi接続処理（connectSavedWiFi）をスキップ
+  // connectSavedWiFi(); 
 
-  uint8_t primaryChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 1;
+  // ★ チャンネルを強制的に Channel 1 固定にする
+  uint8_t primaryChannel = 1;
 
-  // ESP-NOWのチャンネルをWi-Fiに合わせる
+  // ESP-NOWのチャンネルを設定
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(primaryChannel, WIFI_SECOND_CHAN_NONE);
   esp_wifi_set_promiscuous(false);
@@ -110,12 +111,14 @@ void setup() {
   EspNowManager::init();
   bleMgr.init();
 
-  // 起動時に Wi-Fi が繋がっていればサーバーへ自己登録および最新設定取得
+  // ★ オフラインモード: サーバーへの自己登録・設定取得をスキップ
+  /*
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("[Server] Registering Gateway & Fetching Config...");
     serverApiMgr.registerGateway(bleMgr.deviceId, bleMgr.spotName);
     serverApiMgr.fetchGatewayInfo(bleMgr.deviceId);
   }
+  */
 
   // LoRa用シリアル通信（UART2）の開始
   Serial2.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
@@ -130,11 +133,13 @@ void loop() {
   // バックグラウンドタスク処理（BLE経由の設定書き込みやDB登録など）
   bleMgr.processPendingTasks();
 
-  // Wi-Fi接続時、1分ごとにサーバーAPIから設定を取得して同期
+  // オフラインモード: サーバーからの定期設定取得をコメントアウト
+  /*
   if (WiFi.status() == WL_CONNECTED && (millis() - lastFetchConfigTime > FETCH_CONFIG_INTERVAL)) {
     lastFetchConfigTime = millis();
     serverApiMgr.fetchGatewayInfo(bleMgr.deviceId);
   }
+  */
 
   // 定期的に画面を更新してバッテリー残量を最新化する
   if (millis() - lastBatteryCheckTime > BATTERY_CHECK_INTERVAL) {
