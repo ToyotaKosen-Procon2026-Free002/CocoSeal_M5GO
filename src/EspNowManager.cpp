@@ -7,6 +7,8 @@
 #include <esp_wifi.h>
 #include <esp_now.h>
 #include <esp_idf_version.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 // 子機側と完全に一致させた64バイト構造体定義
 struct GatewayCommunicationPacket {
@@ -18,6 +20,7 @@ struct GatewayCommunicationPacket {
 
 // ブロードキャスト用MACアドレス
 static uint8_t broadcastMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static QueueHandle_t receivedPackets = nullptr;
 
 // -------------------------------------------------------------------
 // ESP-NOW 受信コールバック関数（ESP32 SDK Version 互換対応）
@@ -52,24 +55,8 @@ void onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len) {
     packet.device_id[36] = '\0';
     packet.stickerId[15] = '\0';
 
-    Serial.printf("[ESP-NOW Recv] Type: %d, Device: %s, IsGateway: %d\n", 
-                  packet.type, packet.device_id, packet.isGateway);
-
-    // --- 1. すれ違い通信 (MESSAGE_TYPE_ENCOUNTER: 0) ---
-    if (packet.type == 0) {
-        Serial.printf("[Encounter Detect] Child ID: %s\n", packet.device_id);
-        
-        // M5Stackのログ保持・画面更新・シール返信処理を実行
-        stickerSosMgr.handlePacket(packet, -50);
-
-    } 
-    // --- 2. SOSアラート受信 (MESSAGE_TYPE_SOS: 1) ---
-    else if (packet.type == 1) {
-        Serial.printf("[SOS EMERGENCY] From Child ID: %s\n", packet.device_id);
-        
-        // アラーム発動処理
-        stickerSosMgr.handleSos(packet.device_id, "ESP-NOW");
-
+    if (!receivedPackets || xQueueSend(receivedPackets, &packet, 0) != pdTRUE) {
+        Serial.println("[ESP-NOW Error] Received packet queue full; packet dropped.");
     }
 }
 
@@ -88,6 +75,12 @@ void EspNowManager::onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingD
 #endif
 
 void EspNowManager::init() {
+    receivedPackets = xQueueCreate(8, sizeof(CommunicationPacket));
+    if (!receivedPackets) {
+        Serial.println("[ESP-NOW Error] Failed to create receive queue.");
+        return;
+    }
+
     if (esp_now_init() != ESP_OK) {
         Serial.println("[ESP-NOW] Init Failed!");
         return;
@@ -104,6 +97,28 @@ void EspNowManager::init() {
     
     esp_now_register_recv_cb(::onDataRecv);
     Serial.println("[ESP-NOW] Initialized successfully on Gateway!");
+}
+
+void EspNowManager::processPendingPackets() {
+    if (!receivedPackets) {
+        return;
+    }
+
+    CommunicationPacket packet = {};
+    if (xQueueReceive(receivedPackets, &packet, 0) != pdTRUE) {
+        return;
+    }
+
+    Serial.printf("[ESP-NOW Recv] Type: %d, Device: %s, IsGateway: %d\n",
+                  packet.type, packet.device_id, packet.isGateway);
+
+    if (packet.type == 0) {
+        Serial.printf("[Encounter Detect] Child ID: %s\n", packet.device_id);
+        stickerSosMgr.handlePacket(packet, -50);
+    } else if (packet.type == 1) {
+        Serial.printf("[SOS EMERGENCY] From Child ID: %s\n", packet.device_id);
+        stickerSosMgr.handleSos(packet.device_id, "ESP-NOW");
+    }
 }
 
 void EspNowManager::sendSticker(const String& targetChildId, const String& stickerId) {

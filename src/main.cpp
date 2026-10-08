@@ -126,6 +126,9 @@ void setup() {
 
 void loop() {
   M5.update();
+
+  // ESP-NOWコールバックでは受信だけ行い、画面更新やHTTPS通信はメインループで処理する
+  EspNowManager::processPendingPackets();
   
   // バックグラウンドタスク処理（BLE経由の設定書き込みやDB登録など）
   bleMgr.processPendingTasks();
