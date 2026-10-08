@@ -51,7 +51,9 @@ void DisplayManager::update() {
   // 表示データのフォールバック処理（未設定時のデフォルト値）
   String devId = bleMgr.deviceId.isEmpty() ? "M5-未初期化" : bleMgr.deviceId;
   String spot = bleMgr.spotName.isEmpty() ? "未登録" : bleMgr.spotName;
-  String sticker = bleMgr.distributeStickerId.isEmpty() ? "なし" : bleMgr.distributeStickerId;
+  String sticker = !bleMgr.distributeStickerName.isEmpty()
+    ? bleMgr.distributeStickerName
+    : (bleMgr.distributeStickerId.isEmpty() ? "なし" : bleMgr.distributeStickerId);
 
   const lgfx::GFXfont* font16 = (const lgfx::GFXfont*)&lgfx::fonts::efontJA_16;
   const lgfx::GFXfont* font24 = (const lgfx::GFXfont*)&lgfx::fonts::efontJA_24;
@@ -97,7 +99,7 @@ void DisplayManager::update() {
       gfx.setCursor(10, 95);
       gfx.println("シールを送信しました！");
       gfx.setCursor(10, 135);
-      gfx.printf("シールID: %s\n", sticker.c_str());
+      gfx.printf("シール: %s\n", sticker.c_str());
       break;
 
     case STATE_SOS_ALERT:

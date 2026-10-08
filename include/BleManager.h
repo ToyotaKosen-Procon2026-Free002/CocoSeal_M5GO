@@ -21,6 +21,7 @@ public:
   String deviceId;
   String spotName;
   String distributeStickerId;
+  String distributeStickerName;
   String lastSyncTime;
 
   // 初期化 & 基本操作

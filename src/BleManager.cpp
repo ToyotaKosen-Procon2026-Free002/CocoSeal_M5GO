@@ -4,6 +4,7 @@
 #include <Preferences.h>
 #include <sys/time.h>
 #include <time.h>
+#include <ArduinoJson.h>
 #include "BleManager.h"
 #include "StateManager.h"
 #include "StickerSosManager.h"
@@ -39,6 +40,7 @@ void BleManager::init() {
 
   Preferences prefs;
   prefs.begin("gateway_cfg", false);
+  distributeStickerName = prefs.getString("sticker_name", "");
 
   // NVSに保存済みのUUIDがあれば読み込み、無ければ新規生成する
   if (prefs.isKey("gateway_id")) {
@@ -120,7 +122,11 @@ void BleManager::onWrite(NimBLECharacteristic* pCharacteristic) {
   if (payload.startsWith("SPOT:")) {
     spotName = payload.substring(5);
   } else if (payload.startsWith("STICKER:")) {
-    distributeStickerId = payload.substring(8);
+    distributeStickerName = payload.substring(8);
+    Preferences prefs;
+    prefs.begin("gateway_cfg", false);
+    prefs.putString("sticker_name", distributeStickerName);
+    prefs.end();
   } else if (payload == "GET_LOGS") {
     stickerSosMgr.flushLogsToBle();
   } else if (payload.startsWith("SSID:")) {
@@ -188,12 +194,14 @@ void BleManager::processPendingTasks() {
 void BleManager::updateStatus() {
   if (!pStatusChar) return;
 
-  String status =
-    "{\"station_id\":\"" + deviceId +
-    "\",\"spot_name\":\"" + spotName +
-    "\",\"distribute_sticker_id\":\"" + distributeStickerId +
-    "\",\"wifi_connected\":" + (WiFi.status() == WL_CONNECTED ? "true" : "false") +
-    "}";
+  JsonDocument statusDoc;
+  statusDoc["station_id"] = deviceId;
+  statusDoc["spot_name"] = spotName;
+  statusDoc["distribute_sticker_id"] = distributeStickerId;
+  statusDoc["distribute_sticker_name"] = distributeStickerName;
+  statusDoc["wifi_connected"] = WiFi.status() == WL_CONNECTED;
+  String status;
+  serializeJson(statusDoc, status);
 
   pStatusChar->setValue((uint8_t*)status.c_str(), status.length());
   if (deviceConnected) {
