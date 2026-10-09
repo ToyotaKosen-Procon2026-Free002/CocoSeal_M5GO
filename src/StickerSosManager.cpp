@@ -12,21 +12,57 @@ StickerSosManager::StickerSosManager() {}
 
 // SOS受信時の処理 (ESP-NOW / LoRa)
 void StickerSosManager::handleSos(const String& childId, const String& source) {
+  processSos(childId, source, "", 0, "");
+}
+
+void StickerSosManager::handleSignedSos(const String& childId,
+                                        const String& eventId,
+                                        uint32_t triggerTimestamp,
+                                        const uint8_t* childSignature,
+                                        size_t signatureLength) {
+  if (!childSignature || signatureLength == 0 || signatureLength > 80) {
+    Serial.println("[SOS] Invalid child signature; received SOS locally only.");
+    processSos(childId, "ESP-NOW", "", 0, "");
+    return;
+  }
+
+  String signatureHex;
+  signatureHex.reserve(signatureLength * 2);
+  for (size_t i = 0; i < signatureLength; ++i) {
+    char byteHex[3];
+    snprintf(byteHex, sizeof(byteHex), "%02x", childSignature[i]);
+    signatureHex += byteHex;
+  }
+  processSos(childId, "ESP-NOW", eventId, triggerTimestamp, signatureHex);
+}
+
+void StickerSosManager::processSos(const String& childId,
+                                   const String& source,
+                                   const String& eventId,
+                                   uint32_t triggerTimestamp,
+                                   const String& childSignature) {
   String timestamp = bleMgr.getTimestamp();
 
   // 1. 音とLEDで緊急警報を作動
   ledBuzzerMgr.showRealSos();
   StateManager::changeState(STATE_SOS_ALERT);
 
-  // 2. Wi-Fiに繋がっていればサーバーへ直通送信 (POST /devices/sos)
-  bool sentSuccess = serverApiMgr.sendSosAlert(bleMgr.deviceId, childId);
+  pendingSosLogs.push_back({childId, timestamp});
+  flushLogsToBle();
 
-  // 3. サーバー送信に失敗した場合（オフライン時等）のみ、内部ログ（未送信キャッシュ）に追加
-  if (!sentSuccess) {
-    pendingSosLogs.push_back({childId, timestamp});
-    Serial.println("[SOS Log] Direct send failed or offline. Saved to pending queue.");
+  bool sentSuccess = false;
+  if (!eventId.isEmpty() && triggerTimestamp > 0 && !childSignature.isEmpty()) {
+    sentSuccess = serverApiMgr.sendSosAlert(
+        bleMgr.deviceId, childId, eventId, triggerTimestamp, childSignature);
   } else {
-    Serial.println("[SOS Log] Direct send success. Skipped saving to pending queue.");
+    Serial.printf("[SOS] %s alert has no child signature; not sent to server.\n",
+                  source.c_str());
+  }
+
+  if (sentSuccess) {
+    Serial.println("[SOS Log] Server relay succeeded.");
+  } else {
+    Serial.println("[SOS Log] Server relay failed; BLE alert was sent or queued.");
   }
 }
 

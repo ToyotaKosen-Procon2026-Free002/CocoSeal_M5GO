@@ -444,9 +444,73 @@ bool ServerApiManager::sendStatusAndPassageLogs(const String& gatewayId, const S
   return false;
 }
 
-bool ServerApiManager::sendSosAlert(const String& gatewayId, const String& childId) {
-  (void)gatewayId;
-  (void)childId;
-  Serial.println("[SOS Alert API Error] Cannot send: API requires a signature from the child device, but ESP-NOW packet does not contain it.");
-  return false;
+bool ServerApiManager::sendSosAlert(const String& gatewayId,
+                                    const String& childId,
+                                    const String& eventId,
+                                    uint32_t triggerTimestamp,
+                                    const String& childSignature) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[SOS API Error] Wi-Fi is not connected.");
+    return false;
+  }
+  if (gatewayId.isEmpty() || childId.isEmpty() || eventId.isEmpty() ||
+      triggerTimestamp == 0 || childSignature.isEmpty()) {
+    Serial.println("[SOS API Error] Required signed SOS fields are missing.");
+    return false;
+  }
+
+  const time_t receiveTime = time(nullptr);
+  if (receiveTime <= 0) {
+    Serial.println("[SOS API Error] Gateway receive time is invalid.");
+    return false;
+  }
+
+  JsonDocument doc;
+  doc["event_id"] = eventId;
+  doc["child_id"] = childId;
+  doc["gateway_id"] = gatewayId;
+  doc["trigger_timestamp"] = formatIsoTimestamp(
+      static_cast<time_t>(triggerTimestamp));
+  doc["receive_timestamp"] = formatIsoTimestamp(receiveTime);
+  doc["signature"] = childSignature;
+
+  String jsonBody;
+  serializeJson(doc, jsonBody);
+  const String signature = generateRequestSignature(gatewayId, jsonBody);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  const String url = String(serverUrl) + "/devices/sos_gateway";
+  if (!http.begin(client, url)) {
+    Serial.println("[SOS API Error] Failed to connect to server.");
+    return false;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Gateway-Id", gatewayId);
+  http.addHeader("X-Gateway-Signature", signature);
+
+  const int httpCode = http.POST(jsonBody);
+  const String response = http.getString();
+  http.end();
+
+  if (httpCode < 200 || httpCode >= 300) {
+    Serial.printf("[SOS API Error] Code: %d, Response: %s\n",
+                  httpCode, response.c_str());
+    return false;
+  }
+
+  JsonDocument responseDoc;
+  DeserializationError error = deserializeJson(responseDoc, response);
+  if (error || !responseDoc["success"].is<bool>() ||
+      !responseDoc["success"].as<bool>()) {
+    Serial.printf("[SOS API Error] Server did not confirm SOS: %s\n",
+                  response.c_str());
+    return false;
+  }
+
+  Serial.println("[SOS API] Relay sent successfully.");
+  return true;
 }

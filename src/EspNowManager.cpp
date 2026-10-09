@@ -18,6 +18,35 @@ struct GatewayCommunicationPacket {
     bool isGateway;
 };
 
+struct GatewaySosCommunicationPacket {
+    GatewayCommunicationPacket packet;
+    char event_id[37];
+    uint8_t reserved[3];
+    uint32_t trigger_timestamp;
+    uint8_t signature[80];
+    uint8_t signature_length;
+};
+
+struct PendingPacket {
+    CommunicationPacket packet;
+    char event_id[37];
+    uint32_t trigger_timestamp;
+    uint8_t signature[80];
+    uint8_t signature_length;
+    bool hasSignedSos;
+};
+
+static_assert(sizeof(GatewayCommunicationPacket) == 64,
+              "Gateway packet layout must match the child firmware");
+static_assert(offsetof(GatewaySosCommunicationPacket, event_id) == 64,
+              "SOS event ID protocol offset mismatch");
+static_assert(offsetof(GatewaySosCommunicationPacket, trigger_timestamp) == 104,
+              "SOS timestamp protocol offset mismatch");
+static_assert(offsetof(GatewaySosCommunicationPacket, signature) == 108,
+              "SOS signature protocol offset mismatch");
+static_assert(sizeof(GatewaySosCommunicationPacket) == 192,
+              "SOS packet layout must match the child firmware");
+
 // ブロードキャスト用MACアドレス
 static uint8_t broadcastMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static QueueHandle_t receivedPackets = nullptr;
@@ -31,21 +60,52 @@ void onDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingDat
 void onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len) {
 #endif
 
-    // 64バイトの通信パケットかチェック (旧58バイト構造体からの互換も考慮)
-    if (len != sizeof(GatewayCommunicationPacket) && len != sizeof(CommunicationPacket)) {
-        Serial.printf("[ESP-NOW Error] Size mismatch! Expected %d or %d bytes, got %d bytes\n", 
+    if (len != sizeof(GatewaySosCommunicationPacket) &&
+        len != sizeof(GatewayCommunicationPacket) &&
+        len != sizeof(CommunicationPacket)) {
+        Serial.printf("[ESP-NOW Error] Size mismatch! Expected %d, %d or %d bytes, got %d bytes\n",
+                      (int)sizeof(GatewaySosCommunicationPacket),
                       (int)sizeof(GatewayCommunicationPacket), (int)sizeof(CommunicationPacket), len);
         return;
     }
 
     CommunicationPacket packet = {};
-    
-    if (len == sizeof(GatewayCommunicationPacket)) {
+    PendingPacket pending = {};
+
+    if (len == sizeof(GatewaySosCommunicationPacket)) {
+        GatewaySosCommunicationPacket sosPacket = {};
+        memcpy(&sosPacket, incomingData, sizeof(sosPacket));
+
+        if (sosPacket.packet.type != 1 || sosPacket.packet.isGateway ||
+            strnlen(sosPacket.event_id, sizeof(sosPacket.event_id)) != 36 ||
+            sosPacket.trigger_timestamp == 0 ||
+            sosPacket.signature_length == 0 ||
+            sosPacket.signature_length > sizeof(sosPacket.signature)) {
+            Serial.println("[ESP-NOW Error] Invalid signed SOS packet; dropped.");
+            return;
+        }
+
+        memcpy(packet.device_id, sosPacket.packet.device_id,
+               sizeof(packet.device_id) - 1);
+        memcpy(packet.stickerId, sosPacket.packet.stickerId,
+               sizeof(packet.stickerId) - 1);
+        packet.type = sosPacket.packet.type;
+        packet.isGateway = sosPacket.packet.isGateway;
+        memcpy(pending.event_id, sosPacket.event_id,
+               sizeof(pending.event_id));
+        pending.trigger_timestamp = sosPacket.trigger_timestamp;
+        memcpy(pending.signature, sosPacket.signature,
+               sosPacket.signature_length);
+        pending.signature_length = sosPacket.signature_length;
+        pending.hasSignedSos = true;
+    } else if (len == sizeof(GatewayCommunicationPacket)) {
         GatewayCommunicationPacket gPacket;
         memcpy(&gPacket, incomingData, sizeof(gPacket));
         
-        snprintf(packet.device_id, sizeof(packet.device_id), "%s", gPacket.device_id);
-        snprintf(packet.stickerId, sizeof(packet.stickerId), "%s", gPacket.stickerId);
+        memcpy(packet.device_id, gPacket.device_id,
+               sizeof(packet.device_id) - 1);
+        memcpy(packet.stickerId, gPacket.stickerId,
+               sizeof(packet.stickerId) - 1);
         packet.type = gPacket.type;
         packet.isGateway = gPacket.isGateway;
     } else {
@@ -54,8 +114,9 @@ void onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len) {
 
     packet.device_id[36] = '\0';
     packet.stickerId[15] = '\0';
+    pending.packet = packet;
 
-    if (!receivedPackets || xQueueSend(receivedPackets, &packet, 0) != pdTRUE) {
+    if (!receivedPackets || xQueueSend(receivedPackets, &pending, 0) != pdTRUE) {
         Serial.println("[ESP-NOW Error] Received packet queue full; packet dropped.");
     }
 }
@@ -75,7 +136,7 @@ void EspNowManager::onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingD
 #endif
 
 void EspNowManager::init() {
-    receivedPackets = xQueueCreate(8, sizeof(CommunicationPacket));
+    receivedPackets = xQueueCreate(8, sizeof(PendingPacket));
     if (!receivedPackets) {
         Serial.println("[ESP-NOW Error] Failed to create receive queue.");
         return;
@@ -104,10 +165,11 @@ void EspNowManager::processPendingPackets() {
         return;
     }
 
-    CommunicationPacket packet = {};
-    if (xQueueReceive(receivedPackets, &packet, 0) != pdTRUE) {
+    PendingPacket pending = {};
+    if (xQueueReceive(receivedPackets, &pending, 0) != pdTRUE) {
         return;
     }
+    CommunicationPacket& packet = pending.packet;
 
     Serial.printf("[ESP-NOW Recv] Type: %d, Device: %s, IsGateway: %d\n",
                   packet.type, packet.device_id, packet.isGateway);
@@ -117,7 +179,14 @@ void EspNowManager::processPendingPackets() {
         stickerSosMgr.handlePacket(packet, -50);
     } else if (packet.type == 1) {
         Serial.printf("[SOS EMERGENCY] From Child ID: %s\n", packet.device_id);
-        stickerSosMgr.handleSos(packet.device_id, "ESP-NOW");
+        if (pending.hasSignedSos) {
+            stickerSosMgr.handleSignedSos(
+                packet.device_id, pending.event_id,
+                pending.trigger_timestamp, pending.signature,
+                pending.signature_length);
+        } else {
+            stickerSosMgr.handleSos(packet.device_id, "ESP-NOW");
+        }
     }
 }
 

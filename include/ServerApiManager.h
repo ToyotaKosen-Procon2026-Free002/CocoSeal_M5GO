@@ -43,7 +43,11 @@ public:
   bool sendStatusAndPassageLogs(const String& gatewayId, const String& childId, const String& stickerId);
 
   // 3. SOS情報の送信
-  bool sendSosAlert(const String& gatewayId, const String& childId);
+  bool sendSosAlert(const String& gatewayId,
+                    const String& childId,
+                    const String& eventId,
+                    uint32_t triggerTimestamp,
+                    const String& childSignature);
 };
 
 extern ServerApiManager serverApiMgr;

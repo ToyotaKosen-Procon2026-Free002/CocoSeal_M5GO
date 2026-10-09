@@ -10,6 +10,13 @@ struct EncounterLog {
 };
 
 class StickerSosManager {
+private:
+  void processSos(const String& childId,
+                  const String& source,
+                  const String& eventId,
+                  uint32_t triggerTimestamp,
+                  const String& childSignature);
+
 public:
   std::vector<EncounterLog> pendingDistributeLogs;
   std::vector<SosLog> pendingSosLogs;
@@ -18,6 +25,11 @@ public:
   StickerSosManager();
   
   void handleSos(const String& childId, const String& source);
+  void handleSignedSos(const String& childId,
+                       const String& eventId,
+                       uint32_t triggerTimestamp,
+                       const uint8_t* childSignature,
+                       size_t signatureLength);
   void handlePacket(const CommunicationPacket& packet, int rssi);
   void flushLogsToBle();
 
