@@ -27,7 +27,7 @@ public:
   // 初期化 & 基本操作
   void init();
   void updateStatus();
-  void sendLogsToApp(const String& jsonLogs);
+  bool sendLogsToApp(const String& jsonLogs);
   String getTimestamp();
 
   // loop() から呼び出す

@@ -209,8 +209,9 @@ void BleManager::updateStatus() {
   }
 }
 
-void BleManager::sendLogsToApp(const String& jsonLogs) {
-  if (!pLogChar || !deviceConnected) return;
+bool BleManager::sendLogsToApp(const String& jsonLogs) {
+  if (!pLogChar || !deviceConnected) return false;
   pLogChar->setValue((uint8_t*)jsonLogs.c_str(), jsonLogs.length());
   pLogChar->notify();
+  return true;
 }

@@ -6,6 +6,7 @@
 struct EncounterLog {
   String device_id_2;
   String device_timestamp;
+  String send_seal_id;
 };
 
 class StickerSosManager {

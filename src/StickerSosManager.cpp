@@ -4,6 +4,7 @@
 #include "StateManager.h"
 #include "LedBuzzerManager.h"
 #include "ServerApiManager.h"
+#include <ArduinoJson.h>
 
 StickerSosManager stickerSosMgr;
 
@@ -60,15 +61,17 @@ void StickerSosManager::handlePacket(const CommunicationPacket& packet, int rssi
         // 画面表示を「配布完了」に切り替え
         StateManager::changeState(STATE_STICKER_DISPLAY);
 
+        // BLE接続中ならアプリへ即時通知し、未接続なら後で取得できるよう保持
+        pendingDistributeLogs.push_back({senderId, timestamp, bleMgr.distributeStickerId});
+        flushLogsToBle();
+
         // Wi-Fiに繋がっていればサーバーへ直通送信 (POST /devices/status)
         bool sentSuccess = serverApiMgr.sendStatusAndPassageLogs(bleMgr.deviceId, senderId, bleMgr.distributeStickerId);
 
-        // サーバー送信に失敗した場合（オフライン時等）のみ、内部通過ログ（未送信キャッシュ）に追加
         if (!sentSuccess) {
-          pendingDistributeLogs.push_back({senderId, timestamp});
-          Serial.println("[Passage Log] Direct send failed or offline. Saved to pending queue.");
+          Serial.println("[Passage Log] Direct send failed or offline. BLE app log remains queued if not delivered.");
         } else {
-          Serial.println("[Passage Log] Direct send success. Skipped saving to pending queue.");
+          Serial.println("[Passage Log] Direct send success.");
         }
       }
     }
@@ -77,23 +80,29 @@ void StickerSosManager::handlePacket(const CommunicationPacket& packet, int rssi
 
 // BLE経由でタブレットへ蓄積ログを一括転送
 void StickerSosManager::flushLogsToBle() {
-  String json = "{\"station_id\":\"" + bleMgr.deviceId + "\",";
-  json += "\"encounter_logs\":[";
+  JsonDocument doc;
+  doc["station_id"] = bleMgr.deviceId;
+  JsonArray encounterLogs = doc["encounter_logs"].to<JsonArray>();
   for (size_t i = 0; i < pendingDistributeLogs.size(); i++) {
-    json += "{\"device_id_2\":\"" + pendingDistributeLogs[i].device_id_2 + "\",\"device_timestamp\":\"" + pendingDistributeLogs[i].device_timestamp + "\"}";
-    if (i < pendingDistributeLogs.size() - 1) json += ",";
+    JsonObject log = encounterLogs.add<JsonObject>();
+    log["device_id_2"] = pendingDistributeLogs[i].device_id_2;
+    log["device_timestamp"] = pendingDistributeLogs[i].device_timestamp;
+    log["send_seal_id"] = pendingDistributeLogs[i].send_seal_id;
   }
-  json += "],\"sos_logs\":[";
+
+  JsonArray sosLogs = doc["sos_logs"].to<JsonArray>();
   for (size_t i = 0; i < pendingSosLogs.size(); i++) {
-    json += "{\"child_id\":\"" + pendingSosLogs[i].child_id + "\",\"device_timestamp\":\"" + pendingSosLogs[i].device_timestamp + "\"}";
-    if (i < pendingSosLogs.size() - 1) json += ",";
+    JsonObject log = sosLogs.add<JsonObject>();
+    log["child_id"] = pendingSosLogs[i].child_id;
+    log["device_timestamp"] = pendingSosLogs[i].device_timestamp;
   }
-  json += "]}";
 
-  // BLE CharacteristicでアプリへNotify送信
-  bleMgr.sendLogsToApp(json);
+  String json;
+  serializeJson(doc, json);
 
-  // 送信完了したログをクリア
+  // Notifyできたときだけログを消し、未接続なら次回要求まで保持する
+  if (!bleMgr.sendLogsToApp(json)) return;
+
   pendingDistributeLogs.clear();
   pendingSosLogs.clear();
 }
