@@ -12,6 +12,11 @@ private:
 
   bool deviceConnected = false;
   bool gatewayRegistrationPending = false;
+  bool wifiConnectionPending = false;
+  bool wifiConnectionInProgress = false;
+  unsigned long wifiConnectionStartedAt = 0;
+  String pendingWifiSsid;
+  String pendingWifiPass;
 
 public:
   // 仮想デストラクタを追加

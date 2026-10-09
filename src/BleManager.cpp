@@ -33,14 +33,16 @@ String generateUUID() {
 }
 
 void BleManager::init() {
-  spotName = "Unregistered";
   distributeStickerId = "st_110";
   lastSyncTime = "None";
   gatewayRegistrationPending = false;
+  wifiConnectionPending = false;
+  wifiConnectionInProgress = false;
 
   Preferences prefs;
   prefs.begin("gateway_cfg", false);
   distributeStickerName = prefs.getString("sticker_name", "");
+  spotName = prefs.getString("spot_name", "Unregistered");
 
   // NVSに保存済みのUUIDがあれば読み込み、無ければ新規生成する
   if (prefs.isKey("gateway_id")) {
@@ -116,11 +118,13 @@ void BleManager::onWrite(NimBLECharacteristic* pCharacteristic) {
   if (val.length() == 0) return;
 
   String payload = String(val.c_str());
-  static String wifiSsid = "";
-  static String wifiPass = "";
 
   if (payload.startsWith("SPOT:")) {
     spotName = payload.substring(5);
+    Preferences prefs;
+    prefs.begin("gateway_cfg", false);
+    prefs.putString("spot_name", spotName);
+    prefs.end();
   } else if (payload.startsWith("STICKER:")) {
     distributeStickerName = payload.substring(8);
     Preferences prefs;
@@ -130,50 +134,19 @@ void BleManager::onWrite(NimBLECharacteristic* pCharacteristic) {
   } else if (payload == "GET_LOGS") {
     stickerSosMgr.flushLogsToBle();
   } else if (payload.startsWith("SSID:")) {
-    wifiSsid = payload.substring(5);
+    pendingWifiSsid = payload.substring(5);
   } else if (payload.startsWith("PASS:")) {
-    wifiPass = payload.substring(5);
+    pendingWifiPass = payload.substring(5);
   }
 
-  if (wifiSsid.length() > 0 && wifiPass.length() > 0) {
+  if (!pendingWifiSsid.isEmpty() && !pendingWifiPass.isEmpty()) {
     Preferences prefs;
     prefs.begin("gateway_cfg", false);
-    prefs.putString("wifi_ssid", wifiSsid);
-    prefs.putString("wifi_pass", wifiPass);
+    prefs.putString("wifi_ssid", pendingWifiSsid);
+    prefs.putString("wifi_pass", pendingWifiPass);
     prefs.end();
 
-    WiFi.disconnect();
-    WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
-
-    unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startTime < 15000) {
-      delay(200);
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      // Wi-Fi接続成功時に時刻同期（SSL通信用）を実施
-      configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-      struct tm timeinfo;
-      unsigned long ntpStart = millis();
-      while (!getLocalTime(&timeinfo) && millis() - ntpStart < 3000) {
-        delay(200);
-      }
-      if (!getLocalTime(&timeinfo)) {
-        // NTP失敗時は2026年10月の時刻を自動セット
-        struct timeval tv = { 1791500000, 0 };
-        settimeofday(&tv, NULL);
-      }
-
-      uint8_t ch = WiFi.channel();
-      esp_wifi_set_promiscuous(true);
-      esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
-      esp_wifi_set_promiscuous(false);
-
-      gatewayRegistrationPending = true;
-    }
-
-    wifiSsid = "";
-    wifiPass = "";
+    wifiConnectionPending = true;
   }
 
   lastSyncTime = "App Synced";
@@ -182,6 +155,50 @@ void BleManager::onWrite(NimBLECharacteristic* pCharacteristic) {
 }
 
 void BleManager::processPendingTasks() {
+  if (wifiConnectionPending) {
+    wifiConnectionPending = false;
+
+    Serial.printf("[WiFi] Connecting to SSID: %s\n", pendingWifiSsid.c_str());
+    WiFi.disconnect();
+    WiFi.begin(pendingWifiSsid.c_str(), pendingWifiPass.c_str());
+    wifiConnectionStartedAt = millis();
+    wifiConnectionInProgress = true;
+  }
+
+  if (wifiConnectionInProgress) {
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnectionInProgress = false;
+      Serial.printf("[WiFi] Connected. IP: %s\n", WiFi.localIP().toString().c_str());
+      // Wi-Fi接続成功時に時刻同期（SSL通信用）を実施
+      configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+      struct tm timeinfo;
+      unsigned long ntpStart = millis();
+      while (!getLocalTime(&timeinfo) && millis() - ntpStart < 3000) {
+        delay(200);
+      }
+      if (!getLocalTime(&timeinfo)) {
+        struct timeval tv = { 1791500000, 0 };
+        settimeofday(&tv, NULL);
+      }
+
+      uint8_t ch = WiFi.channel();
+      esp_wifi_set_promiscuous(true);
+      esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+      esp_wifi_set_promiscuous(false);
+      gatewayRegistrationPending = true;
+    } else if (millis() - wifiConnectionStartedAt >= 60000) {
+      wifiConnectionInProgress = false;
+      Serial.println("[WiFi] Connection failed within 60 seconds.");
+      WiFi.disconnect();
+    }
+
+    if (!wifiConnectionInProgress) {
+      pendingWifiSsid = "";
+      pendingWifiPass = "";
+      updateStatus();
+    }
+  }
+
   if (!gatewayRegistrationPending) return;
   gatewayRegistrationPending = false;
 

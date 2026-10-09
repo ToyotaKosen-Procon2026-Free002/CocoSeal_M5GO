@@ -66,7 +66,7 @@ void connectSavedWiFi() {
   WiFi.begin(savedSsid.c_str(), savedPass.c_str());
 
   unsigned long startAttemptTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 60000) {
     delay(200);
     Serial.print(".");
   }
@@ -113,8 +113,8 @@ void setup() {
   // 起動時に Wi-Fi が繋がっていればサーバーへ自己登録および最新設定取得
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("[Server] Registering Gateway & Fetching Config...");
-    serverApiMgr.registerGateway(bleMgr.deviceId, bleMgr.spotName);
     serverApiMgr.fetchGatewayInfo(bleMgr.deviceId);
+    serverApiMgr.registerGateway(bleMgr.deviceId, bleMgr.spotName);
   }
 
   // LoRa用シリアル通信（UART2）の開始

@@ -1,6 +1,7 @@
 #include "ServerApiManager.h"
 #include "Config.h"
 #include "BleManager.h"
+#include "DisplayManager.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -286,8 +287,19 @@ bool ServerApiManager::fetchGatewayInfo(const String& gatewayId) {
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, response);
     if (!error) {
-      if (doc["name"].is<String>()) {
-        bleMgr.spotName = doc["name"].as<String>();
+      if (doc["name"].is<String>() && !doc["name"].as<String>().isEmpty()) {
+        String fetchedSpotName = doc["name"].as<String>();
+        bool spotNameChanged = bleMgr.spotName != fetchedSpotName;
+        bleMgr.spotName = fetchedSpotName;
+
+        Preferences prefs;
+        prefs.begin("gateway_cfg", false);
+        prefs.putString("spot_name", bleMgr.spotName);
+        prefs.end();
+
+        if (spotNameChanged) {
+          displayMgr.update();
+        }
       }
       if (doc["distribute_seal_id"].is<String>()) {
         String sealId = doc["distribute_seal_id"].as<String>();
