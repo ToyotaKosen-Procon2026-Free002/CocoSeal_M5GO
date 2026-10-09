@@ -64,7 +64,7 @@ void DisplayManager::update() {
       gfx.setTextColor(TFT_CYAN, TFT_BLACK);
       gfx.setFont(font24);
       gfx.setCursor(10, 45);
-      gfx.println("===== iPad 接続中 =====");
+      gfx.println("====== アプリ接続中 ======");
       gfx.setFont(font16);
       gfx.setCursor(10, 90);
       gfx.println("アプリと同期しています...");
@@ -74,7 +74,7 @@ void DisplayManager::update() {
       gfx.setFont(font24);
       gfx.setTextColor(TFT_WHITE, TFT_BLACK);
       gfx.setCursor(10, 45);
-      gfx.println("===== 親機モード =====");
+      gfx.println("====== 親機モード ======");
 
       gfx.setFont(font16);
       gfx.setCursor(10, 85);
@@ -93,7 +93,7 @@ void DisplayManager::update() {
       gfx.setFont(font24);
       gfx.setTextColor(TFT_GREEN, TFT_BLACK);
       gfx.setCursor(10, 45);
-      gfx.println("===== 配布完了 =====");
+      gfx.println("====== 配布完了 ======");
       
       gfx.setFont(font16);
       gfx.setCursor(10, 95);
@@ -118,7 +118,7 @@ void DisplayManager::update() {
       gfx.setFont(font24);
       gfx.setTextColor(TFT_ORANGE, TFT_BLACK);
       gfx.setCursor(10, 45);
-      gfx.println("===== SOS テスト =====");
+      gfx.println("====== SOS テスト ======");
       
       gfx.setFont(font16);
       gfx.setCursor(10, 95);
@@ -129,7 +129,7 @@ void DisplayManager::update() {
       gfx.setFont(font24);
       gfx.setTextColor(TFT_CYAN, TFT_BLACK);
       gfx.setCursor(10, 45);
-      gfx.println("===== 設定確認 =====");
+      gfx.println("====== 設定確認 ======");
 
       gfx.setFont(font16);
       gfx.setCursor(10, 80);

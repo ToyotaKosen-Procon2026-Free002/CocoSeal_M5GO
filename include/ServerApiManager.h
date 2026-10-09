@@ -33,6 +33,9 @@ public:
   // 認証付き親機情報取得 (GET /devices/gateway/{gateway_id})
   bool fetchGatewayInfo(const String& gatewayId);
 
+  // 配布シール情報取得 (GET /devices/seal_gateway)
+  bool fetchDistributeSealInfo(const String& gatewayId, const String& sealId);
+
   // 1. 親機の初回登録・アクティベート (POST /devices/gateway/init)
   bool registerGateway(const String& gatewayId, const String& spotName);
 

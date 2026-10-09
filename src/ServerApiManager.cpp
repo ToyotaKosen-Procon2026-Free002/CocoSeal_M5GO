@@ -290,7 +290,15 @@ bool ServerApiManager::fetchGatewayInfo(const String& gatewayId) {
         bleMgr.spotName = doc["name"].as<String>();
       }
       if (doc["distribute_seal_id"].is<String>()) {
-        bleMgr.distributeStickerId = doc["distribute_seal_id"].as<String>();
+        String sealId = doc["distribute_seal_id"].as<String>();
+        if (sealId != bleMgr.distributeStickerId) {
+          bleMgr.distributeStickerName = "";
+          Preferences prefs;
+          prefs.begin("gateway_cfg", false);
+          prefs.remove("sticker_name");
+          prefs.end();
+        }
+        bleMgr.distributeStickerId = sealId;
       }
     } else {
       Serial.printf("[API Get Gateway Info Error] Invalid JSON: %s\n", error.c_str());
@@ -298,11 +306,79 @@ bool ServerApiManager::fetchGatewayInfo(const String& gatewayId) {
       return false;
     }
     http.end();
+
+    if (!bleMgr.distributeStickerId.isEmpty()) {
+      fetchDistributeSealInfo(gatewayId, bleMgr.distributeStickerId);
+    }
+    bleMgr.updateStatus();
     return true;
   }
 
   Serial.printf("[API Get Gateway Info Failed] Code: %d\n", httpCode);
   Serial.printf("[API Get Gateway Info Failed] Response: %s\n", response.c_str());
+  http.end();
+  return false;
+}
+
+bool ServerApiManager::fetchDistributeSealInfo(const String& gatewayId, const String& sealId) {
+  String normalizedSealId = sealId;
+  normalizedSealId.trim();
+  if (normalizedSealId.isEmpty() || normalizedSealId.equalsIgnoreCase("none")) {
+    return false;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[API Get Seal Info Error] Wi-Fi is not connected.");
+    return false;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  String url = String(serverUrl) + "/devices/seal_gateway?seal_id=" + normalizedSealId;
+
+  if (!http.begin(client, url)) {
+    Serial.println("[API Get Seal Info Error] Failed to connect to server.");
+    return false;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Gateway-Id", gatewayId);
+  http.addHeader("X-Gateway-Signature", generateRequestSignature(gatewayId, ""));
+
+  int httpCode = http.GET();
+  String response = http.getString();
+
+  if (httpCode == 200) {
+    Serial.printf("[API Get Seal Info Success] Response: %s\n", response.c_str());
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (error) {
+      Serial.printf("[API Get Seal Info Error] Invalid JSON: %s\n", error.c_str());
+      http.end();
+      return false;
+    }
+
+    if (!doc["name"].is<String>()) {
+      Serial.println("[API Get Seal Info Error] Response does not contain a seal name.");
+      http.end();
+      return false;
+    }
+
+    bleMgr.distributeStickerName = doc["name"].as<String>();
+    Preferences prefs;
+    prefs.begin("gateway_cfg", false);
+    prefs.putString("sticker_name", bleMgr.distributeStickerName);
+    prefs.end();
+    bleMgr.updateStatus();
+    http.end();
+    return true;
+  }
+
+  Serial.printf("[API Get Seal Info Failed] Code: %d\n", httpCode);
+  Serial.printf("[API Get Seal Info Failed] Response: %s\n", response.c_str());
   http.end();
   return false;
 }
