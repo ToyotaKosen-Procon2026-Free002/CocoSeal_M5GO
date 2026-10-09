@@ -14,7 +14,7 @@
 struct GatewayCommunicationPacket {
     char device_id[37];
     int type; // 0: encounter, 1: SOS, 2: name
-    char stickerId[16];
+    char stickerId[37];
     bool isGateway;
 };
 
@@ -36,15 +36,15 @@ struct PendingPacket {
     bool hasSignedSos;
 };
 
-static_assert(sizeof(GatewayCommunicationPacket) == 64,
+static_assert(sizeof(GatewayCommunicationPacket) == 84,
               "Gateway packet layout must match the child firmware");
-static_assert(offsetof(GatewaySosCommunicationPacket, event_id) == 64,
+static_assert(offsetof(GatewaySosCommunicationPacket, event_id) == 84,
               "SOS event ID protocol offset mismatch");
-static_assert(offsetof(GatewaySosCommunicationPacket, trigger_timestamp) == 104,
+static_assert(offsetof(GatewaySosCommunicationPacket, trigger_timestamp) == 124,
               "SOS timestamp protocol offset mismatch");
-static_assert(offsetof(GatewaySosCommunicationPacket, signature) == 108,
+static_assert(offsetof(GatewaySosCommunicationPacket, signature) == 128,
               "SOS signature protocol offset mismatch");
-static_assert(sizeof(GatewaySosCommunicationPacket) == 192,
+static_assert(sizeof(GatewaySosCommunicationPacket) == 212,
               "SOS packet layout must match the child firmware");
 
 // ブロードキャスト用MACアドレス
