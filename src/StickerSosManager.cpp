@@ -57,6 +57,8 @@ void StickerSosManager::handlePacket(const CommunicationPacket& packet, int rssi
 
         // 子機へシール情報を返信
         EspNowManager::sendSticker(bleMgr.deviceId, bleMgr.distributeStickerId);
+        // 子機へスポットネームを通知
+        EspNowManager::sendSpotName(bleMgr.spotName);
 
         // 画面表示を「配布完了」に切り替え
         StateManager::changeState(STATE_STICKER_DISPLAY);

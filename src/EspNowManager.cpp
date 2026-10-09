@@ -137,3 +137,25 @@ void EspNowManager::sendSticker(const String& targetChildId, const String& stick
         Serial.printf("[ESP-NOW SendSticker Error] Send failed with code: %d\n", result);
     }
 }
+
+void EspNowManager::sendSpotName(const String& spotName) {
+    GatewayCommunicationPacket packet = {};
+
+    snprintf(packet.device_id, sizeof(packet.device_id), "%s", bleMgr.deviceId.c_str());
+    int written = snprintf(packet.stickerId, sizeof(packet.stickerId), "%s", spotName.c_str());
+    packet.type = 2;          // MESSAGE_TYPE_NAME
+    packet.isGateway = true;  // 親機フラグON
+
+    if (written < 0 || written >= sizeof(packet.stickerId)) {
+        Serial.printf("[ESP-NOW SendSpotName] Spot name exceeds %u bytes and will be truncated.\n",
+                      (unsigned int)(sizeof(packet.stickerId) - 1));
+    }
+
+    esp_err_t result = esp_now_send(broadcastMac, (uint8_t *)&packet, sizeof(packet));
+    if (result == ESP_OK) {
+        Serial.printf("[ESP-NOW SendSpotName] Successfully sent spot name '%s'\n",
+                      packet.stickerId);
+    } else {
+        Serial.printf("[ESP-NOW SendSpotName Error] Send failed with code: %d\n", result);
+    }
+}
