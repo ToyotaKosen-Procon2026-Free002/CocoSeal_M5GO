@@ -113,7 +113,7 @@ void onDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len) {
     }
 
     packet.device_id[36] = '\0';
-    packet.stickerId[15] = '\0';
+    packet.stickerId[36] = '\0';
     pending.packet = packet;
 
     if (!receivedPackets || xQueueSend(receivedPackets, &pending, 0) != pdTRUE) {

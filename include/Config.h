@@ -27,7 +27,7 @@ enum State {
 struct __attribute__((packed)) CommunicationPacket {
   char device_id[37];  // 37 bytes
   int type;            // 4 bytes (offset 40)
-  char stickerId[16];  // 16 bytes
+  char stickerId[37];  // 37 bytes
   bool isGateway;      // 1 byte
 };
 
